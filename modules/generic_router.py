@@ -457,6 +457,17 @@ class GenericRouter:
         best_score = scores[best_label]
         return best_label, best_score
 
+    def _clean_text(self, text: str) -> str:
+        """Removes markdown formatting that confuses the embedding model."""
+        import re
+        # Remove markdown links [text](url) -> text
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        # Remove headers
+        text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+        # Remove backticks, asterisks, and tildes globally
+        text = text.replace('*', '').replace('`', '').replace('~', '')
+        return text.strip()
+
     def predict(self, text: str) -> tuple:
         """
         Classifies the text.
@@ -465,36 +476,42 @@ class GenericRouter:
         Returns: (label, score) or ('null', score).
         """
         label, score = None, 0.0
+        
+        # Clean markdown formatting before routing
+        clean_text = self._clean_text(text)
+        if not clean_text:
+            return 'null', 0.0
 
         # Step 1: ML model
         if self.enabled and self._model:
-            label, score = self._model_predict(text)
+            label, score = self._model_predict(clean_text)
             if label and score >= self.confidence_threshold:
                 # Verify label exists in experts.json
                 if label in self.categories:
                     app_logger.info(
-                        f"GenericRouter [model]: '{text[:60]}' -> {label} ({score:.2f})"
+                        f"GenericRouter [model]: '{clean_text[:60]}' -> {label} ({score:.2f})"
                     )
                     return label, score
                 else:
                     app_logger.warning(
-                        f"GenericRouter: label '{label}' not defined in experts.json. "
-                        f"Trying fallback."
+                        f"GenericRouter Model predicted unknown label '{label}'. Falling back..."
                     )
+            else:
+                app_logger.info(f"GenericRouter [model]: score {score:.2f} below threshold ({self.confidence_threshold}).")
 
-        # Step 2: keyword + fuzzy fallback
+        # Step 2: Keyword fallback
         if self.keyword_fallback:
-            kw_label, kw_score = self._keyword_predict(text)
+            k_label, k_score = self._keyword_predict(clean_text)
             # Lower threshold for fallback (50% of main)
             kw_threshold = self.confidence_threshold * 0.5
-            if kw_label and kw_score >= kw_threshold:
+            if k_label and k_score >= kw_threshold:
                 app_logger.info(
-                    f"GenericRouter [keywords]: '{text[:60]}' → {kw_label} ({kw_score:.2f})"
+                    f"GenericRouter [keyword]: '{clean_text[:60]}' -> {k_label} ({k_score:.2f})"
                 )
-                return kw_label, kw_score
+                return k_label, k_score
 
-        app_logger.info(f"GenericRouter: no classification for '{text[:60]}'")
-        return 'null', score
+        app_logger.info(f"GenericRouter: No match found for '{clean_text[:60]}'")
+        return 'null', 0.0
 
     def clear_cache(self):
         self._predict_cache.clear()

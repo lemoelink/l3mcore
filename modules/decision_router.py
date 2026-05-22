@@ -99,20 +99,33 @@ class DecisionRouter:
         self._predict_cache[text] = result
         return result
 
+    def _clean_text(self, text: str) -> str:
+        """Removes markdown formatting that confuses the classification model."""
+        import re
+        # Remove markdown links [text](url) -> text
+        text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
+        # Remove headers
+        text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
+        # Remove backticks, asterisks, and tildes globally
+        text = text.replace('*', '').replace('`', '').replace('~', '')
+        return text.strip()
 
     def predict(self, text):
         """
         Classifies the input text using the model.
         Returns: (label, score) or ('null', score) if below threshold.
         """
-        best_label, best_score = self._predict_cached(text)
+        clean_text = self._clean_text(text)
+        if not clean_text:
+            return "null", 0.0
+
+        best_label, best_score = self._predict_cached(clean_text)
 
         if best_label and best_score >= self.confidence_threshold:
-            app_logger.info(f"Router Prediction: '{text}' -> {best_label} ({best_score:.2f})")
+            app_logger.info(f"Router Prediction: '{clean_text}' -> {best_label} ({best_score:.2f})")
             return best_label, best_score
         else:
             return "null", best_score
-
     def clear_cache(self):
         """Clears the prediction cache to free memory."""
         self._predict_cache.clear()
