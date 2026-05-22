@@ -1,0 +1,140 @@
+{
+  "max_experts": 15,
+  "experts": [
+    {
+      "id": 1,
+      "label": "programador",
+      "description": "Experto en escribir y revisar código",
+      "keywords": ["codigo", "programar", "python", "javascript", "funcion", "script", "error", "bug", "html", "css", "desarrollo", "refactorizar"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen2.5:7b"
+    },
+    {
+      "id": 2,
+      "label": "traductor",
+      "description": "Experto en traducir textos entre idiomas",
+      "keywords": ["traduce", "traduccion", "ingles", "español", "frances", "aleman", "idioma", "significa", "traducir", "contexto"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:1b"
+    },
+    {
+      "id": 3,
+      "label": "escritor_creativo",
+      "description": "Redacción creativa, historias, poemas y textos narrativos",
+      "keywords": ["historia", "cuento", "poema", "escribir", "redactar", "creativo", "personaje", "trama", "narrativa", "novela"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.1:8b"
+    },
+    {
+      "id": 4,
+      "label": "admin_bd",
+      "description": "Creación y optimización de consultas SQL y bases de datos",
+      "keywords": ["sql", "base de datos", "query", "mysql", "postgresql", "tabla", "indice", "join", "select", "datos"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen2.5:7b"
+    },
+    {
+      "id": 5,
+      "label": "sysadmin",
+      "description": "Comandos de sistema Linux, gestión de procesos y redes",
+      "keywords": ["linux", "bash", "servidor", "red", "ubuntu", "comando", "terminal", "ssh", "permisos", "proceso"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "gemma4:e2b"
+    },
+    {
+      "id": 6,
+      "label": "ux_designer",
+      "description": "Diseño de interfaces de usuario y accesibilidad",
+      "keywords": ["diseño", "ux", "ui", "interfaz", "accesibilidad", "color", "navegacion", "usuario", "frontend", "botones"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen3-vl:8b"
+    },
+    {
+      "id": 7,
+      "label": "data_scientist",
+      "description": "Análisis de datos, estadística y machine learning",
+      "keywords": ["datos", "pandas", "dataset", "estadistica", "machine learning", "grafica", "prediccion", "analisis", "numpy"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.1:8b"
+    },
+    {
+      "id": 8,
+      "label": "auditor_seguridad",
+      "description": "Auditoría de ciberseguridad y pentesting",
+      "keywords": ["seguridad", "hack", "vulnerabilidad", "xss", "inyeccion", "auditoria", "ciberseguridad", "proteger", "contraseña"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen2.5:7b"
+    },
+    {
+      "id": 9,
+      "label": "copywriter",
+      "description": "Redacción publicitaria y textos persuasivos para ventas",
+      "keywords": ["ventas", "marketing", "publicidad", "copy", "anuncio", "vender", "persuasivo", "slogan", "campaña"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:3b"
+    },
+    {
+      "id": 10,
+      "label": "devops",
+      "description": "Gestión de contenedores, Docker, Kubernetes y CI/CD",
+      "keywords": ["docker", "kubernetes", "despliegue", "ci/cd", "pipeline", "contenedor", "yaml", "github actions", "infraestructura"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "gemma3n:e2b"
+    },
+    {
+      "id": 11,
+      "label": "profesor_mates",
+      "description": "Resolución de problemas matemáticos y cálculo",
+      "keywords": ["matematicas", "ecuacion", "calculo", "algebra", "formula", "resolver", "numeros", "fraccion", "geometria"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.1:8b"
+    },
+    {
+      "id": 12,
+      "label": "experto_seo",
+      "description": "Optimización para motores de búsqueda y análisis de palabras clave",
+      "keywords": ["seo", "posicionamiento", "google", "keywords", "trafico", "busqueda", "metaetiquetas", "ranking", "organico"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen3.5:2b"
+    },
+    {
+      "id": 13,
+      "label": "game_master",
+      "description": "Director de juego para partidas de rol y creación de historias",
+      "keywords": ["juego", "rol", "rpg", "d&d", "aventura", "personaje", "dados", "calabozo", "npc", "fantasia"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:3b"
+    },
+    {
+      "id": 14,
+      "label": "asesor_legal",
+      "description": "Análisis de lenguaje legal, contratos y términos",
+      "keywords": ["legal", "contrato", "ley", "clausula", "abogado", "terminos", "condiciones", "documento", "derecho"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.1:8b"
+    },
+    {
+      "id": 15,
+      "label": "soporte_tecnico",
+      "description": "Asistencia técnica general para problemas de software y hardware",
+      "keywords": ["ayuda", "soporte", "no funciona", "error", "pantalla", "reiniciar", "windows", "mac", "configuracion", "wifi"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen:0.5b"
+    }
+  ]
+}

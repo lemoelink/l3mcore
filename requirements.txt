@@ -1,0 +1,17 @@
+# LEMoE - Light Easy Mix Of Experts
+# Dependencias Python necesarias
+
+# Router clasificador (grape-route, safetensors/HuggingFace pipeline)
+transformers>=4.30.0
+torch                 # CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu
+sentencepiece>=0.1.99
+sentence-transformers>=2.2.2
+rapidfuzz>=3.0
+litellm>=1.0.0
+
+# Modelos ONNX especializados (malbec, syrah, pinot, chardonnay)
+onnxruntime>=1.15.0
+numpy>=1.24.0
+
+# Motor GGUF fallback (opcional, solo si se usa AIEngine)
+# llama-cpp-python>=0.2.0

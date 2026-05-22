@@ -1,0 +1,17 @@
+{
+    "router": {
+        "mode": "generic",
+        "router_type": "embedding",
+        "model_path": "intfloat/multilingual-e5-small",
+        "categories_file": "config/experts.json",
+        "confidence_threshold": 0.4,
+        "keyword_fallback": true,
+        "softmax_temperature": 0.15,
+        "scoring_weights": {
+            "max_keyword":  0.40,
+            "description":  0.30,
+            "mean_keyword": 0.20,
+            "top3_vote":    0.10
+        }
+    }
+}
