@@ -108,6 +108,8 @@ class DecisionRouter:
         text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
         # Remove backticks, asterisks, and tildes globally
         text = text.replace('*', '').replace('`', '').replace('~', '')
+        # Remove underscores ONLY at word boundaries
+        text = re.sub(r'(?<!\w)_+|_+(?!\w)', ' ', text)
         return text.strip()
 
     def predict(self, text):

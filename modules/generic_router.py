@@ -466,6 +466,8 @@ class GenericRouter:
         text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
         # Remove backticks, asterisks, and tildes globally
         text = text.replace('*', '').replace('`', '').replace('~', '')
+        # Remove underscores ONLY at word boundaries (preserves variable_names)
+        text = re.sub(r'(?<!\w)_+|_+(?!\w)', ' ', text)
         return text.strip()
 
     def predict(self, text: str) -> tuple:
@@ -502,9 +504,7 @@ class GenericRouter:
         # Step 2: Keyword fallback
         if self.keyword_fallback:
             k_label, k_score = self._keyword_predict(clean_text)
-            # Lower threshold for fallback (50% of main)
-            kw_threshold = self.confidence_threshold * 0.5
-            if k_label and k_score >= kw_threshold:
+            if k_label and k_score >= self.confidence_threshold:
                 app_logger.info(
                     f"GenericRouter [keyword]: '{clean_text[:60]}' -> {k_label} ({k_score:.2f})"
                 )
