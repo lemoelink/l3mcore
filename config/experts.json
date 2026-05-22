@@ -3,138 +3,143 @@
   "experts": [
     {
       "id": 1,
-      "label": "programador",
-      "description": "Experto en escribir y revisar código",
-      "keywords": ["codigo", "programar", "python", "javascript", "funcion", "script", "error", "bug", "html", "css", "desarrollo", "refactorizar"],
+      "label": "programador_python",
+      "description": "Experto en desarrollo, depuración y arquitectura en Python.",
+      "keywords": ["python", "django", "flask", "pandas", "script", "codigo", "bug", "decorador", "clase", "pip", "pytest", "asyncio", "numpy", "refactor", "excepcion"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
       "model_name": "qwen2.5:7b"
     },
     {
       "id": 2,
-      "label": "traductor",
-      "description": "Experto en traducir textos entre idiomas",
-      "keywords": ["traduce", "traduccion", "ingles", "español", "frances", "aleman", "idioma", "significa", "traducir", "contexto"],
+      "label": "desarrollador_web",
+      "description": "Especialista en frontend, HTML, CSS, y JavaScript moderno.",
+      "keywords": ["html", "css", "javascript", "react", "vue", "frontend", "web", "navegador", "dom", "tailwind", "typescript", "componente", "ui", "ux", "responsive"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.2:1b"
+      "model_name": "qwen2.5:7b"
     },
     {
       "id": 3,
-      "label": "escritor_creativo",
-      "description": "Redacción creativa, historias, poemas y textos narrativos",
-      "keywords": ["historia", "cuento", "poema", "escribir", "redactar", "creativo", "personaje", "trama", "narrativa", "novela"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.1:8b"
+      "label": "experto_ciberseguridad",
+      "description": "Analista de vulnerabilidades, pentesting y seguridad de redes.",
+      "keywords": ["seguridad", "hack", "vulnerabilidad", "pentest", "firewall", "nmap", "cifrado", "malware", "phishing", "explotar", "cve", "auditoria", "red", "ataque", "proteccion"],
+      "type": "api",
+      "provider": "openai",
+      "model_name": "groq/llama-3.1-8b-instant",
+      "api_key_env": "GROQ_API_KEY"
     },
     {
       "id": 4,
-      "label": "admin_bd",
-      "description": "Creación y optimización de consultas SQL y bases de datos",
-      "keywords": ["sql", "base de datos", "query", "mysql", "postgresql", "tabla", "indice", "join", "select", "datos"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "qwen2.5:7b"
+      "label": "traductor_universal",
+      "description": "Especialista en traducción de textos entre múltiples idiomas.",
+      "keywords": ["traducir", "idioma", "ingles", "frances", "aleman", "texto", "traduccion", "lenguaje", "diccionario", "significado", "palabra", "interpretar", "frase", "gramatica", "vocabulario"],
+      "type": "local",
+      "format": "onnx",
+      "model_path": "models/traductor-onnx"
     },
     {
       "id": 5,
-      "label": "sysadmin",
-      "description": "Comandos de sistema Linux, gestión de procesos y redes",
-      "keywords": ["linux", "bash", "servidor", "red", "ubuntu", "comando", "terminal", "ssh", "permisos", "proceso"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "gemma4:e2b"
+      "label": "creador_contenido",
+      "description": "Redactor creativo para blogs, redes sociales y marketing.",
+      "keywords": ["blog", "post", "twitter", "tweet", "marketing", "seo", "viral", "articulo", "redactar", "copywriting", "audiencia", "engagement", "hashtag", "publicidad", "campaña"],
+      "type": "api",
+      "provider": "openai",
+      "model_name": "groq/llama-3.1-8b-instant",
+      "api_key_env": "GROQ_API_KEY"
     },
     {
       "id": 6,
-      "label": "ux_designer",
-      "description": "Diseño de interfaces de usuario y accesibilidad",
-      "keywords": ["diseño", "ux", "ui", "interfaz", "accesibilidad", "color", "navegacion", "usuario", "frontend", "botones"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "qwen3-vl:8b"
-    },
-    {
-      "id": 7,
-      "label": "data_scientist",
-      "description": "Análisis de datos, estadística y machine learning",
-      "keywords": ["datos", "pandas", "dataset", "estadistica", "machine learning", "grafica", "prediccion", "analisis", "numpy"],
+      "label": "administrador_sistemas",
+      "description": "Experto en Linux, bash, servidores y despliegues.",
+      "keywords": ["linux", "bash", "servidor", "ubuntu", "docker", "kubernetes", "ssh", "bashrc", "permisos", "nginx", "apache", "cron", "scripting", "terminal", "sysadmin"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
       "model_name": "llama3.1:8b"
     },
     {
+      "id": 7,
+      "label": "cientifico_datos",
+      "description": "Analista de datos, estadísticas, machine learning y visualización.",
+      "keywords": ["datos", "estadistica", "machine learning", "grafico", "visualizacion", "prediccion", "dataset", "entrenamiento", "modelo", "ia", "inteligencia artificial", "regresion", "clasificacion", "cluster", "analisis"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "mistral"
+    },
+    {
       "id": 8,
-      "label": "auditor_seguridad",
-      "description": "Auditoría de ciberseguridad y pentesting",
-      "keywords": ["seguridad", "hack", "vulnerabilidad", "xss", "inyeccion", "auditoria", "ciberseguridad", "proteger", "contraseña"],
+      "label": "asesor_legal",
+      "description": "Asistente para redacción de contratos y términos legales básicos.",
+      "keywords": ["ley", "abogado", "contrato", "legal", "clausula", "derecho", "normativa", "demanda", "jurisprudencia", "firma", "condiciones", "privacidad", "gdpr", "terminos", "litigio"],
+      "type": "api",
+      "provider": "openai",
+      "model_name": "groq/llama-3.1-8b-instant",
+      "api_key_env": "GROQ_API_KEY"
+    },
+    {
+      "id": 9,
+      "label": "chef_virtual",
+      "description": "Experto en recetas, cocina y nutrición.",
+      "keywords": ["receta", "cocina", "ingrediente", "plato", "comida", "chef", "horno", "sarten", "hervir", "asar", "postre", "salado", "dulce", "nutricion", "dieta"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.1:8b"
+    },
+    {
+      "id": 10,
+      "label": "entrenador_personal",
+      "description": "Especialista en rutinas de ejercicio y fitness.",
+      "keywords": ["ejercicio", "rutina", "gimnasio", "musculo", "entrenamiento", "fitness", "pesas", "cardio", "fuerza", "resistencia", "abdominales", "flexiones", "correr", "estiramiento", "calentamiento"],
+      "type": "api",
+      "provider": "openai",
+      "model_name": "groq/llama-3.1-8b-instant",
+      "api_key_env": "GROQ_API_KEY"
+    },
+    {
+      "id": 11,
+      "label": "malbec",
+      "description": "Experto en generar comandos y configuraciones de Docker.",
+      "keywords": ["docker", "contenedor", "dockerfile", "docker-compose", "imagen", "volumen", "puerto", "red", "build", "run", "orquestacion", "desplegar", "compose", "ps", "rm"],
+      "type": "local",
+      "format": "onnx",
+      "model_path": "models/malbec"
+    },
+    {
+      "id": 12,
+      "label": "clasificador_sentimiento",
+      "description": "Modelo rápido para detectar si un texto es positivo, negativo o neutral.",
+      "keywords": ["sentimiento", "positivo", "negativo", "neutral", "emocion", "enfado", "feliz", "triste", "opinion", "review", "reseña", "critica", "evaluacion", "actitud", "tono"],
+      "type": "local",
+      "format": "onnx",
+      "model_path": "models/sentiment-onnx"
+    },
+    {
+      "id": 13,
+      "label": "experto_sql",
+      "description": "Especialista en bases de datos relacionales y consultas complejas.",
+      "keywords": ["sql", "base de datos", "query", "select", "join", "tabla", "mysql", "postgresql", "index", "relacional", "columna", "fila", "insert", "update", "delete"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
       "model_name": "qwen2.5:7b"
     },
     {
-      "id": 9,
-      "label": "copywriter",
-      "description": "Redacción publicitaria y textos persuasivos para ventas",
-      "keywords": ["ventas", "marketing", "publicidad", "copy", "anuncio", "vender", "persuasivo", "slogan", "campaña"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.2:3b"
-    },
-    {
-      "id": 10,
-      "label": "devops",
-      "description": "Gestión de contenedores, Docker, Kubernetes y CI/CD",
-      "keywords": ["docker", "kubernetes", "despliegue", "ci/cd", "pipeline", "contenedor", "yaml", "github actions", "infraestructura"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "gemma3n:e2b"
-    },
-    {
-      "id": 11,
-      "label": "profesor_mates",
-      "description": "Resolución de problemas matemáticos y cálculo",
-      "keywords": ["matematicas", "ecuacion", "calculo", "algebra", "formula", "resolver", "numeros", "fraccion", "geometria"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.1:8b"
-    },
-    {
-      "id": 12,
-      "label": "experto_seo",
-      "description": "Optimización para motores de búsqueda y análisis de palabras clave",
-      "keywords": ["seo", "posicionamiento", "google", "keywords", "trafico", "busqueda", "metaetiquetas", "ranking", "organico"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "qwen3.5:2b"
-    },
-    {
-      "id": 13,
-      "label": "game_master",
-      "description": "Director de juego para partidas de rol y creación de historias",
-      "keywords": ["juego", "rol", "rpg", "d&d", "aventura", "personaje", "dados", "calabozo", "npc", "fantasia"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.2:3b"
-    },
-    {
       "id": 14,
-      "label": "asesor_legal",
-      "description": "Análisis de lenguaje legal, contratos y términos",
-      "keywords": ["legal", "contrato", "ley", "clausula", "abogado", "terminos", "condiciones", "documento", "derecho"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.1:8b"
+      "label": "resumidor_textos",
+      "description": "Genera resúmenes ejecutivos de textos largos.",
+      "keywords": ["resumen", "resumir", "sintetizar", "corto", "breve", "idea principal", "puntos clave", "ejecutivo", "conclusion", "reducir", "parrafo", "texto", "lectura", "esquema", "sinopsis"],
+      "type": "local",
+      "format": "gguf",
+      "model_path": "models/gemma-2-2b-it-Q4_K_M.gguf"
     },
     {
       "id": 15,
-      "label": "soporte_tecnico",
-      "description": "Asistencia técnica general para problemas de software y hardware",
-      "keywords": ["ayuda", "soporte", "no funciona", "error", "pantalla", "reiniciar", "windows", "mac", "configuracion", "wifi"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "qwen:0.5b"
+      "label": "asistente_viajes",
+      "description": "Planificador de itinerarios y experto en turismo.",
+      "keywords": ["viaje", "vuelo", "hotel", "turismo", "visitar", "itinerario", "vacaciones", "maleta", "pasaporte", "aeropuerto", "destino", "ciudad", "museo", "guia", "mapa"],
+      "type": "api",
+      "provider": "openai",
+      "model_name": "groq/llama-3.1-8b-instant",
+      "api_key_env": "GROQ_API_KEY"
     }
   ]
 }

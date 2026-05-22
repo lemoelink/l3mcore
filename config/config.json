@@ -6,7 +6,7 @@
         "categories_file": "config/experts.json",
         "confidence_threshold": 0.4,
         "keyword_fallback": true,
-        "softmax_temperature": 0.02,
+        "softmax_temperature": 0.005,
         "scoring_weights": {
             "max_keyword": 0.4,
             "description": 0.3,
