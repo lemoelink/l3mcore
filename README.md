@@ -43,8 +43,8 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 Requires Python 3.10 or higher.
 
 ```bash
-git clone <your-repository>
-cd "LEMoE - Light Easy Mix Of Experts"
+git clone https://github.com/lemoelink/LeMoE
+cd LeMoE
 ```
 
 Run the setup script to check dependencies, select your router language, and download the embedding model:
