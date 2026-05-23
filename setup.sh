@@ -10,6 +10,24 @@ echo "LEMoE Setup"
 echo "==========="
 echo ""
 
+# Check prerequisites
+MISSING_PREREQS=0
+
+if ! command -v curl &> /dev/null; then
+    echo "Error: 'curl' is required but not installed."
+    MISSING_PREREQS=1
+fi
+
+if ! command -v python3 &> /dev/null; then
+    echo "Error: 'python3' is required but not installed."
+    MISSING_PREREQS=1
+fi
+
+if [ $MISSING_PREREQS -eq 1 ]; then
+    echo "Please install the missing dependencies and run the setup again."
+    exit 1
+fi
+
 # Check Ollama
 if ! command -v ollama &> /dev/null; then
     echo "Ollama is not installed."
