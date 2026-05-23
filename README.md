@@ -41,9 +41,7 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 - **Rate Limiting**: Built-in per-IP sliding-window rate limiter (60 req/min by default). Supports `X-Forwarded-For` for reverse proxy setups.
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
 
-## Watch it in action
-
-Here we see the console and Open WebUI. We are using 4 experts: 1 local ONNX model (Malbec), 1 on Ollama, and 2 API calls with Groq.
+###  Watch it in action!
 https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 ---
 
