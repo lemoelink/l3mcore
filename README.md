@@ -6,6 +6,7 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 > Este proyecto se encuentra actualmente en fase de desarrollo activo. Sin embargo, su funcionalidad principal (enrutamiento, carga de modelos y backends) es completamente operativa y estable para su uso.
 > 
 > This project is currently under active development. However, its core functionality (routing, model loading, and backends) is fully operational and stable for use.
+
 ## Table of Contents
 
 1. [Features](#features)
@@ -40,6 +41,10 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 - **Rate Limiting**: Built-in per-IP sliding-window rate limiter (60 req/min by default). Supports `X-Forwarded-For` for reverse proxy setups.
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
 
+<div align="center">
+  <h3>Watch it in action!</h3>
+  <video src="https://assets.lemoe.link/demo.mp4" controls="controls" muted="muted" width="100%"></video>
+</div>
 ---
 
 ## Quick Start
