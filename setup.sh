@@ -34,6 +34,17 @@ if [ $MISSING_PREREQS -eq 1 ]; then
     exit 1
 fi
 
+echo ""
+echo "Setting up Python virtual environment..."
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+fi
+source venv/bin/activate
+echo "Installing dependencies..."
+pip install --upgrade pip -q
+pip install -r requirements.txt -q
+pip install torch --index-url https://download.pytorch.org/whl/cpu -q
+
 # Check Ollama
 if ! command -v ollama &> /dev/null; then
     echo "Ollama is not installed."

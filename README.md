@@ -1,11 +1,15 @@
 # LEMoE - Light Easy Mix Of Experts
 
-A lightweight Mixture of Experts (MoE) system that acts as an intelligent router for AI requests. It exposes an API fully compatible with OpenAI and Ollama, classifies user input, and automatically dispatches it to the appropriate expert model.
 > [!WARNING]
 > **Fase de Desarrollo / In Development**
 > Este proyecto se encuentra actualmente en fase de desarrollo activo. Sin embargo, su funcionalidad principal (enrutamiento, carga de modelos y backends) es completamente operativa y estable para su uso.
 > 
 > This project is currently under active development. However, its core functionality (routing, model loading, and backends) is fully operational and stable for use.
+
+A lightweight Mixture of Experts (MoE) system that acts as an intelligent router for AI requests. It exposes an API fully compatible with OpenAI and Ollama, classifies user input, and automatically dispatches it to the appropriate expert model.
+
+### 👀 Watch it in action!
+https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 
 ## Table of Contents
 
@@ -41,11 +45,6 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 - **Rate Limiting**: Built-in per-IP sliding-window rate limiter (60 req/min by default). Supports `X-Forwarded-For` for reverse proxy setups.
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
 
-###  Watch it in action!
-<p align="center">
-  <video src="https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3" width="80%" controls></video>
-</p>
-
 ---
 
 ## Quick Start
@@ -53,11 +52,11 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 Requires Python 3.10 or higher.
 
 ```bash
-git clone https://github.com/lemoelink/LeMoE
-cd LeMoE
+git clone <your-repository>
+cd "LEMoE - Light Easy Mix Of Experts"
 ```
 
-Run the setup script to check dependencies, select your router language, and download the embedding model:
+Run the setup script to check dependencies, select your router language, and download the embedding model. *(Note: This script will automatically create and activate an isolated Python virtual environment `venv` to install all requirements securely without breaking your system packages).*
 
 ```bash
 ./setup.sh

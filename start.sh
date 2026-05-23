@@ -22,6 +22,7 @@ if [ ! -d "$VENV_DIR" ]; then
     echo "[LEMoE] Dependencies installed."
 fi
 
+echo "[LEMoE] Activating virtual environment: $VENV_DIR"
 source "$VENV_DIR/bin/activate"
 
 echo "[LEMoE] Starting API server on http://${HOST}:${PORT}"
@@ -29,7 +30,7 @@ echo "[LEMoE] OpenAI-compatible endpoint: http://${HOST}:${PORT}/v1"
 echo "[LEMoE] Ollama-compatible endpoint: http://${HOST}:${PORT}/api"
 echo "[LEMoE] Server: Gunicorn (workers=${WORKERS})"
 
-exec gunicorn \
+exec "$VENV_DIR/bin/gunicorn" \
     --workers "$WORKERS" \
     --worker-class sync \
     --bind "${HOST}:${PORT}" \
