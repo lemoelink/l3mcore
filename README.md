@@ -52,8 +52,8 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 Requires Python 3.10 or higher.
 
 ```bash
-git clone <your-repository>
-cd "LEMoE - Light Easy Mix Of Experts"
+git clone https://github.com/lemoelink/LeMoE
+cd "LeMoE"
 ```
 
 Run the setup script to check dependencies, select your router language, and download the embedding model. *(Note: This script will automatically create and activate an isolated Python virtual environment `venv` to install all requirements securely without breaking your system packages).*
