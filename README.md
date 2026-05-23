@@ -42,7 +42,10 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
 
 ###  Watch it in action!
-https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
+<p align="center">
+  <video src="https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3" width="80%" controls></video>
+</p>
+
 ---
 
 ## Quick Start
