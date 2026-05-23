@@ -1,6 +1,6 @@
 """
 LEMoE GenericRouter
--------------------
+
 Precision hybrid router with three-tier fallback:
 
   1. Embedding mode (default): encodes each keyword individually as a passage
@@ -21,12 +21,15 @@ config.json (router section):
   confidence_threshold -> minimum score (0-1) to accept a prediction.
   keyword_fallback     -> true/false to enable fuzzy matching tier.
   softmax_temperature  -> sharpness of softmax normalization (default 0.15).
-  scoring_weights      -> per-signal weights for hybrid scoring (see _embed_score).
+  scoring_weights      -> per-signal weights for hybrid scoring.
 """
 
 import os
+import re
+import math
 import json
 import logging
+from pathlib import Path
 from modules.logger import app_logger
 
 # rapidfuzz for fuzzy matching in keyword fallback
@@ -85,7 +88,6 @@ class GenericRouter:
         # Scoring weights for hybrid embedding mode (see _embed_score)
         self.scoring_weights: dict = {}
         self.softmax_temperature: float = 0.15
-        # OPT-2: instance-level prediction cache (avoids lru_cache memory leak on self)
         self._predict_cache: dict[str, tuple] = {}
         self._cache_max_size = 256
 
@@ -108,7 +110,7 @@ class GenericRouter:
         else:
             self.model_path = os.path.abspath(raw_model_path) if raw_model_path else ''
 
-        # SEC-5: validate categories_file path stays inside the project directory
+        # Validate categories_file path stays inside the project directory
         raw_cats = cfg.get('categories_file', 'config/experts.json')
         cats_canonical = os.path.realpath(raw_cats)
         project_root   = os.path.realpath('.')
@@ -215,7 +217,6 @@ class GenericRouter:
                 app_logger.info(f"Multi-vector embeddings ready for {len(self.category_embeddings)} experts.")
 
             else:
-                from pathlib import Path
                 model_dir = Path(self.model_path)
                 app_logger.info(f"Loading GenericRouter Classification Model from: {model_dir}...")
 
@@ -248,14 +249,10 @@ class GenericRouter:
         Builds a multi-vector representation for every expert.
 
         For each expert we store:
-          kw_vecs   – one embedding per keyword (max 32), encoded as passages.
-          centroid  – L2-normalised mean of all keyword vectors.
-          desc_vec  – embedding of the expert description sentence (or None).
-
-        This replaces the old single-vector (concatenated keyword soup) approach
-        and is what enables the 4-signal hybrid scoring at inference time.
+          kw_vecs   - one embedding per keyword (max 32).
+          centroid  - L2-normalised mean of all keyword vectors.
+          desc_vec  - embedding of the expert description (or None).
         """
-        import math
         for label, info in self.categories.items():
             keywords = info.get('keywords', [])[:32]  # Cap at 32 to bound memory
             description = info.get('config', {}).get('description', '')
@@ -276,7 +273,7 @@ class GenericRouter:
                     centroid = kw_vecs.mean(dim=0)
                     centroid = F.normalize(centroid, dim=0)
                 except Exception:
-                    centroid = kw_vecs.mean(dim=0)  # no-op if torch not available
+                    centroid = kw_vecs.mean(dim=0)
             else:
                 centroid = None
 
@@ -298,19 +295,12 @@ class GenericRouter:
 
     def _embed_score(self, query_vec, label_data: dict) -> float:
         """
-        Computes a single precision-calibrated score for one expert.
-
-        4 signals:
-          max_keyword  – max cosine similarity between query and any single keyword.
-                         High when the user says exactly one of the expert's words.
-          mean_keyword – mean cosine similarity across all keywords.
-                         High when the query is semantically close to the whole domain.
-          description  – cosine similarity with the expert description sentence.
-                         Captures the intent of the expert, not just surface words.
-          top3_vote    – fraction of the top-3 keyword scores that beat 0.40.
-                         Acts as a soft "consensus" vote to penalise lucky single matches.
-
-        Final score = weighted sum of the four signals (weights from config.json).
+        Computes a weighted score for one expert using 4 signals:
+          max_keyword  - max cosine sim between query and any single keyword.
+          mean_keyword - mean cosine sim across all keywords.
+          description  - cosine sim with the expert description sentence.
+          top3_vote    - fraction of the top-3 keyword scores above 0.40.
+        Weights are configurable via scoring_weights in config.json.
         """
         w = self.scoring_weights
         sims_list = []
@@ -376,7 +366,6 @@ class GenericRouter:
                 # Softmax normalization — sharpens differences between experts
                 # so the winner's score becomes a real probability rather than
                 # an arbitrary cosine value that varies by model.
-                import math
                 temp = self.softmax_temperature
                 exp_scores = {l: math.exp(s / temp) for l, s in raw_scores.items()}
                 total      = sum(exp_scores.values())
@@ -458,15 +447,10 @@ class GenericRouter:
         return best_label, best_score
 
     def _clean_text(self, text: str) -> str:
-        """Removes markdown formatting that confuses the embedding model."""
-        import re
-        # Remove markdown links [text](url) -> text
+        """Strips markdown formatting before routing."""
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-        # Remove headers
         text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
-        # Remove backticks, asterisks, and tildes globally
         text = text.replace('*', '').replace('`', '').replace('~', '')
-        # Remove underscores ONLY at word boundaries (preserves variable_names)
         text = re.sub(r'(?<!\w)_+|_+(?!\w)', ' ', text)
         return text.strip()
 

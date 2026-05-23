@@ -1,10 +1,10 @@
 """
 LEMoE Router Factory
---------------------
+
 Instantiates the correct router based on config.json -> router.mode:
 
-  "generic"  -> GenericRouter (user trained model + categories.jsonl)
-  "model"    -> DecisionRouter (fine-tuned model with hardcoded labels, e.g. grape-route)
+  "generic"  -> GenericRouter (user-configured categories + embedding model)
+  "model"    -> DecisionRouter (fine-tuned classifier with hardcoded labels)
 """
 
 from modules.logger import app_logger

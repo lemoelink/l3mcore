@@ -1,6 +1,10 @@
 # LEMoE - Light Easy Mix Of Experts
 # Dependencias Python necesarias
 
+# Servidor WSGI producción
+flask>=3.0.0
+gunicorn>=22.0.0
+
 # Router clasificador (grape-route, safetensors/HuggingFace pipeline)
 transformers>=4.30.0
 torch                 # CPU build: pip install torch --index-url https://download.pytorch.org/whl/cpu

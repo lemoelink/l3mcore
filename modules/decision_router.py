@@ -1,5 +1,7 @@
 import os
+import re
 import logging
+from pathlib import Path
 from modules.logger import app_logger
 
 # Fallback if transformers is not present
@@ -20,7 +22,6 @@ class DecisionRouter:
         self.config_manager = config_manager
         self.enabled = False
         self.classifier = None
-        # OPT-2: instance-level cache avoids lru_cache memory leak on self
         self._predict_cache: dict[str, tuple] = {}
         self._cache_max_size = 128
 
@@ -37,9 +38,8 @@ class DecisionRouter:
         self.confidence_threshold = config.get('confidence_threshold', 0.4)
 
     def _load_model(self):
-        """Loads the classification model directly (no pipeline)."""
+        """Loads the classification model."""
         try:
-            from pathlib import Path
             model_dir = Path(self.model_path)
             app_logger.info(f"Loading Router Model from: {model_dir}...")
 
@@ -100,15 +100,10 @@ class DecisionRouter:
         return result
 
     def _clean_text(self, text: str) -> str:
-        """Removes markdown formatting that confuses the classification model."""
-        import re
-        # Remove markdown links [text](url) -> text
+        """Strips markdown formatting that confuses the classification model."""
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)
-        # Remove headers
         text = re.sub(r'^#+\s+', '', text, flags=re.MULTILINE)
-        # Remove backticks, asterisks, and tildes globally
         text = text.replace('*', '').replace('`', '').replace('~', '')
-        # Remove underscores ONLY at word boundaries
         text = re.sub(r'(?<!\w)_+|_+(?!\w)', ' ', text)
         return text.strip()
 
@@ -128,7 +123,7 @@ class DecisionRouter:
             return best_label, best_score
         else:
             return "null", best_score
+
     def clear_cache(self):
-        """Clears the prediction cache to free memory."""
         self._predict_cache.clear()
-        app_logger.info("Router prediction cache cleared")
+        app_logger.info("Router cache cleared.")

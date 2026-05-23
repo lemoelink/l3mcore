@@ -1,18 +1,63 @@
+# -----------------------------------------------
+# LEMoE .gitignore  –  Solo se sube producción
+# -----------------------------------------------
+
+# Entornos virtuales
 venv/
-private/
+.venv/
+env/
+
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-data/
-logs/
-*.tmp
+*.pycache
+.pytest_cache/
+
+# Documentos privados / confidenciales
+private/
+
+# Plugins (no forman parte del núcleo público)
+plugins/
+
+# Web / landing page (se despliega por separado en Cloudflare)
+web/
+
+# Tests (no se publican en el núcleo)
+tests/
+test_router.py
+
+# Modelos binarios (demasiado grandes para Git)
 *.onnx
 *.gguf
 *.bin
 *.safetensors
+*.pt
+*.pth
 models/*/
+
+# Datos generados en runtime
+data/
+logs/
+
+# Archivos de entorno / secretos
+.env
+.env.*
+*.secret
+
+# Configuraciones de backup
 config_old.json
 experts_bak.json
-.env
-*.log
+*.bak
+*.tmp
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

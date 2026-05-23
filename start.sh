@@ -1,29 +1,41 @@
 #!/usr/bin/env bash
-# LEMoE - Script de arranque del servidor API
-# Crea el entorno virtual si no existe e inicia el servidor OpenAI/Ollama compatible
+# Starts the LEMoE API server.
+# Creates a virtualenv on first run if one does not already exist.
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VENV_DIR="$SCRIPT_DIR/venv"
 HOST="${LEMOE_HOST:-0.0.0.0}"
 PORT="${LEMOE_PORT:-11435}"
+WORKERS="${LEMOE_WORKERS:-1}"
 
 cd "$SCRIPT_DIR"
 
-# Crear venv si no existe
 if [ ! -d "$VENV_DIR" ]; then
-    echo "[LEMoE] Creando entorno virtual..."
+    echo "[LEMoE] Creating virtual environment..."
     python3 -m venv "$VENV_DIR"
-    echo "[LEMoE] Instalando dependencias base..."
+    echo "[LEMoE] Installing dependencies..."
     "$VENV_DIR/bin/pip" install --upgrade pip -q
-    "$VENV_DIR/bin/pip" install flask transformers sentencepiece onnxruntime numpy -q
-    echo "[LEMoE] Instalando torch CPU..."
+    "$VENV_DIR/bin/pip" install -r requirements.txt -q
+    echo "[LEMoE] Installing PyTorch (CPU)..."
     "$VENV_DIR/bin/pip" install torch --index-url https://download.pytorch.org/whl/cpu -q
-    echo "[LEMoE] Dependencias instaladas."
+    echo "[LEMoE] Dependencies installed."
 fi
 
 source "$VENV_DIR/bin/activate"
-echo "[LEMoE] Servidor API arrancando en http://${HOST}:${PORT}"
-echo "[LEMoE] Compatible con OpenAI: http://${HOST}:${PORT}/v1"
-echo "[LEMoE] Compatible con Ollama: http://${HOST}:${PORT}/api"
-exec python3 api_server.py --host "$HOST" --port "$PORT"
+
+echo "[LEMoE] Starting API server on http://${HOST}:${PORT}"
+echo "[LEMoE] OpenAI-compatible endpoint: http://${HOST}:${PORT}/v1"
+echo "[LEMoE] Ollama-compatible endpoint: http://${HOST}:${PORT}/api"
+echo "[LEMoE] Server: Gunicorn (workers=${WORKERS})"
+
+exec gunicorn \
+    --workers "$WORKERS" \
+    --worker-class sync \
+    --bind "${HOST}:${PORT}" \
+    --timeout 120 \
+    --keep-alive 5 \
+    --log-level warning \
+    --access-logfile - \
+    --error-logfile - \
+    api_server:app

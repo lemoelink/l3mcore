@@ -1,20 +1,15 @@
 """
-LEMoE API Server - OpenAI & Ollama compatible
+LEMoE API Server
 
-Exposes an HTTP API so any client (Open WebUI, Continue, LiteLLM, curl)
-can use LEMoE as a drop-in LLM backend.
-
-Security:
-  - Request body capped at 1 MB (MAX_CONTENT_LENGTH).
-  - Sliding-window rate limiter: 60 req/min per IP (X-Forwarded-For aware).
-  - User input sanitized before writing to logs.
+OpenAI- and Ollama-compatible HTTP API. Any client that speaks either protocol
+can use LEMoE as a drop-in backend by pointing its base URL to this server.
 
 Endpoints:
   GET  /                    -> Server info
   GET  /v1/models           -> List available experts (OpenAI format)
-  POST /v1/chat/completions -> Inference (OpenAI format, streaming)
+  POST /v1/chat/completions -> Inference (OpenAI format, streaming supported)
   GET  /api/tags            -> List models (Ollama format)
-  POST /api/chat            -> Inference (Ollama format, streaming)
+  POST /api/chat            -> Inference (Ollama format, streaming supported)
   GET  /api/version         -> Server version
 """
 
@@ -39,6 +34,7 @@ from modules.router_factory import create_router
 from modules.onnx_runner import SpecificModelRunner
 from modules.ai_engine import AIEngine
 from modules.expert_runner import ExpertDispatcher
+from modules.plugin_manager import PluginManager
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -119,7 +115,7 @@ class _Core:
 # Main inference function
 # ---------------------------------------------------------------------------
 
-def _run_inference(user_text: str, model_hint: str) -> tuple[str, str]:
+def _run_inference(messages: list, model_hint: str) -> tuple[str, str]:
     """
     Executes inference based on the requested model.
     Returns: (response_text, used_model)
@@ -130,6 +126,16 @@ def _run_inference(user_text: str, model_hint: str) -> tuple[str, str]:
     ai_engine     = core["ai_engine"]
     available     = core["available_models"]
     expert_models = [m for m in available if m != DEFAULT_MODEL]
+    plugin_mgr    = PluginManager()
+
+    # Extract user text for the semantic router
+    user_text = _extract_user_text(messages)
+
+    # Plugin Hook: override route (for multimodality, etc.)
+    override_label = plugin_mgr.hook_override_route(messages)
+
+    # Plugin Hook: before_routing
+    user_text = plugin_mgr.hook_before_routing(user_text)
 
     # Helper to execute an expert knowing its label
     def _execute_expert(label: str) -> str:
@@ -137,12 +143,23 @@ def _run_inference(user_text: str, model_hint: str) -> tuple[str, str]:
         if hasattr(router, 'get_expert_config'):
             expert_config = router.get_expert_config(label)
             if expert_config:
-                return dispatcher.run(user_text, expert_config)
+                result = dispatcher.run(messages, expert_config)
+                return plugin_mgr.hook_after_generation(result, label)
         
         # Fallback 'model' mode (grape-route) or if no config exists
         # In this case, we assume local ONNX model
         cfg = {"type": "local", "format": "onnx", "label": label}
-        return dispatcher.run(user_text, cfg)
+        result = dispatcher.run(messages, cfg)
+        return plugin_mgr.hook_after_generation(result, label)
+
+    # 0. If plugin forced a route, use it
+    if override_label:
+        try:
+            app_logger.info(f"Plugin forced route to: {override_label}")
+            result = _execute_expert(override_label)
+            return result, override_label
+        except Exception as e:
+            app_logger.error(f"Error in forced route '{override_label}': {e}")
 
     # 1. If client asks for a specific expert and it exists, use it directly
     if model_hint and model_hint in expert_models:
@@ -164,6 +181,7 @@ def _run_inference(user_text: str, model_hint: str) -> tuple[str, str]:
     # 3. Generic GGUF fallback if everything fails or router yields 'null'
     app_logger.info("Using general AIEngine fallback")
     result = ai_engine.generate_response(user_text)
+    result = plugin_mgr.hook_after_generation(result, "ai_engine")
     return result, "ai_engine"
 
 
@@ -188,52 +206,48 @@ def _extract_user_text(messages: list) -> str:
 
 app = Flask(__name__)
 app.config["JSON_SORT_KEYS"] = False
-# SEC-3: Cap incoming request body to 1 MB to prevent memory exhaustion DoS
-app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024  # 1 MB cap
 
 
-# -- Rate limiter (SEC-4) ---------------------------------------------------
-# Fixed-window in-memory limiter. Default: 60 requests per 60 seconds per IP.
-# Configurable via config.json -> server.rate_limit_requests / rate_limit_window.
+@app.after_request
+def set_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return response
+
+
 
 _rl_lock   = threading.Lock()
-_rl_counts: dict[str, list] = defaultdict(list)  # ip -> [timestamp, ...]
+_rl_counts: dict[str, list] = defaultdict(list)
 
 
 def _get_client_ip() -> str:
-    """Return client IP, honouring X-Forwarded-For if present."""
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
-        # Take the leftmost (original client) IP
         return forwarded.split(",")[0].strip()
     return request.remote_addr or "unknown"
 
 
-def _rate_limit_check(max_requests: int = 60, window_seconds: int = 60) -> bool:
-    """
-    Returns True if the request should be allowed, False if rate-limited.
-    Uses a sliding-window algorithm per client IP.
-    """
+def _rate_limit_check(max_requests: int = 100, window_seconds: int = 60) -> bool:
+    """Sliding-window rate limiter. Returns True if the request is allowed."""
     ip  = _get_client_ip()
     now = time.time()
     with _rl_lock:
-        timestamps = _rl_counts[ip]
-        # Prune old entries outside the window
-        cutoff     = now - window_seconds
-        _rl_counts[ip] = [t for t in timestamps if t > cutoff]
+        cutoff = now - window_seconds
+        _rl_counts[ip] = [t for t in _rl_counts[ip] if t > cutoff]
         if len(_rl_counts[ip]) >= max_requests:
             return False
         _rl_counts[ip].append(now)
         return True
 
 
-# -- Log sanitization (SEC-7) -----------------------------------------------
-
 _NON_PRINTABLE = re.compile(r'[\x00-\x1f\x7f]')
 
 
 def _safe_log(text: str, max_len: int = 120) -> str:
-    """Strip control characters and truncate user text before writing to logs."""
+    """Strip control characters and truncate before writing to logs."""
     cleaned = _NON_PRINTABLE.sub(' ', text)
     return cleaned[:max_len] if len(cleaned) > max_len else cleaned
 
@@ -310,13 +324,12 @@ def chat_completions():
     if not user_text:
         return jsonify({"error": {"message": "No user message found", "type": "invalid_request_error"}}), 400
 
-    # SEC-7: sanitize user text before logging
-    app_logger.info(f"[API] /v1/chat/completions model='{model_hint}' stream={do_stream} text='{_safe_log(user_text)}'")
+    app_logger.info(f"[/v1/chat] model={model_hint!r} stream={do_stream} text={_safe_log(user_text)!r}")
 
     if do_stream:
         def generate():
             try:
-                response_text, used_model = _run_inference(user_text, model_hint)
+                response_text, used_model = _run_inference(messages, model_hint)
                 # Emit content in a single chunk (ONNX experts don't do real streaming)
                 yield _openai_chat_chunk(response_text, used_model)
                 yield _openai_chat_chunk("", used_model, finish_reason="stop")
@@ -336,7 +349,7 @@ def chat_completions():
         )
     else:
         try:
-            response_text, used_model = _run_inference(user_text, model_hint)
+            response_text, used_model = _run_inference(messages, model_hint)
             return jsonify(_openai_chat_response(response_text, used_model))
         except Exception as e:
             app_logger.error(f"Inference error: {e}")
@@ -393,8 +406,7 @@ def ollama_chat():
     if not user_text:
         return jsonify({"error": "No user message found"}), 400
 
-    # SEC-7: sanitize user text before logging
-    app_logger.info(f"[API] /api/chat model='{model_hint}' stream={do_stream} text='{_safe_log(user_text)}'")
+    app_logger.info(f"[/api/chat] model={model_hint!r} stream={do_stream} text={_safe_log(user_text)!r}")
 
     def _ollama_chunk(content: str, model: str, done: bool) -> str:
         obj = {
@@ -416,7 +428,7 @@ def ollama_chat():
     if do_stream:
         def generate():
             try:
-                response_text, used_model = _run_inference(user_text, model_hint)
+                response_text, used_model = _run_inference(messages, model_hint)
                 yield _ollama_chunk(response_text, used_model, done=False)
                 yield _ollama_chunk("", used_model, done=True)
             except Exception as e:
@@ -430,7 +442,7 @@ def ollama_chat():
         )
     else:
         try:
-            response_text, used_model = _run_inference(user_text, model_hint)
+            response_text, used_model = _run_inference(messages, model_hint)
             return Response(
                 _ollama_chunk(response_text, used_model, done=True),
                 mimetype="application/json",
@@ -453,24 +465,31 @@ def root():
 
 
 # ---------------------------------------------------------------------------
-# Entrypoint
+# WSGI entrypoint (Gunicorn / uWSGI) and dev entrypoint
 # ---------------------------------------------------------------------------
+
+def _bootstrap():
+    """Pre-load core + plugins once before the first request."""
+    _Core.get()
+    PluginManager()
+
+
+# Gunicorn calls this module-level; bootstrap when the module is imported
+_bootstrap()
+
 
 def run(host: str = "0.0.0.0", port: int = 11435, debug: bool = False):
     """
-    Starts the API server.
-    Default port 11435 (Ollama uses 11434 - LEMoE avoids collision).
-    To use as a drop-in replacement for Ollama start with --port 11434.
+    Dev-only entrypoint (Flask built-in server).
+    In production use Gunicorn: gunicorn -w 1 -b 0.0.0.0:11435 api_server:app
     """
-    # Pre-load core before accepting requests
-    _Core.get()
-    app_logger.info(f"LEMoE API listening on http://{host}:{port}")
+    app_logger.info(f"[DEV] LEMoE API listening on http://{host}:{port}")
     app.run(host=host, port=port, debug=debug, threaded=True)
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="LEMoE API Server")
+    parser = argparse.ArgumentParser(description="LEMoE API Server (dev mode)")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=11435)
     parser.add_argument("--debug", action="store_true")

@@ -1,3 +1,4 @@
+import gc
 import logging
 import os
 import time
@@ -23,8 +24,6 @@ class AIEngine:
 
         if model_path and os.path.exists(model_path):
             self.model_path = model_path
-        elif os.path.exists("models/gemma-2b-tio.gguf"):
-            self.model_path = "models/gemma-2b-tio.gguf"
         elif os.path.exists("models/gemma-2-2b-it-Q8_0.gguf"):
             self.model_path = "models/gemma-2-2b-it-Q8_0.gguf"
         else:
@@ -56,7 +55,7 @@ class AIEngine:
                         app_logger.info(f"AIEngine TTL Cleanup: Unloading inactive model (idle {self.ttl_seconds}s)")
                         self.llm = None
                         self.is_ready = False
-                        import gc; gc.collect()
+                        gc.collect()
 
     def _ensure_model_loaded(self):
         """Loads the model if it is not already in memory (lazy load)."""
@@ -84,8 +83,8 @@ class AIEngine:
                 verbose=False
             )
             self.is_ready = True
-            app_logger.info(f"Model {os.path.basename(self.model_path)} loaded successfully.")
-            import gc; gc.collect()
+            app_logger.info(f"Model {os.path.basename(self.model_path)} loaded.")
+            gc.collect()
         except Exception as e:
             app_logger.error(f"Error loading model: {e}")
             self.is_ready = False

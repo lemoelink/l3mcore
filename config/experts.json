@@ -99,7 +99,7 @@
       "id": 11,
       "label": "malbec",
       "description": "Experto en generar comandos y configuraciones de Docker.",
-      "keywords": ["docker", "contenedor", "dockerfile", "docker-compose", "imagen", "volumen", "puerto", "red", "build", "run", "orquestacion", "desplegar", "compose", "ps", "rm"],
+      "keywords": ["docker", "contenedor","apache","puerto", "dockerfile", "docker-compose", "imagen", "volumen", "puerto", "red", "build", "run", "orquestacion", "desplegar", "compose", "ps", "rm"],
       "type": "local",
       "format": "onnx",
       "model_path": "models/malbec"

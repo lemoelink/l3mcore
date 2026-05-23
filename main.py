@@ -80,11 +80,10 @@ class LEMoE:
         return result
 
     def shutdown(self):
-        """Frees resources."""
         app_logger.info("Shutting down LEMoE...")
         if hasattr(self.router, 'clear_cache'):
             self.router.clear_cache()
-        app_logger.info("LEMoE stopped.")
+        app_logger.info("Shutdown complete.")
 
 
 def _handle_signal(sig, frame, lemoe_instance):
@@ -106,7 +105,7 @@ def main():
         line = line.strip()
         if not line:
             continue
-        if line.lower() in ("exit", "quit", "salir"):
+        if line.lower() in ("exit", "quit"):
             break
         app_logger.info(f"stdin input: '{_safe_log(line)}'")
         response = lemoe.process(line)
