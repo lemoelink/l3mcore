@@ -1,7 +1,11 @@
 # LEMoE - Light Easy Mix Of Experts
 
 A lightweight Mixture of Experts (MoE) system that acts as an intelligent router for AI requests. It exposes an API fully compatible with OpenAI and Ollama, classifies user input, and automatically dispatches it to the appropriate expert model.
-
+> [!WARNING]
+> **Fase de Desarrollo / In Development**
+> Este proyecto se encuentra actualmente en fase de desarrollo activo. Sin embargo, su funcionalidad principal (enrutamiento, carga de modelos y backends) es completamente operativa y estable para su uso.
+> 
+> This project is currently under active development. However, its core functionality (routing, model loading, and backends) is fully operational and stable for use.
 ## Table of Contents
 
 1. [Features](#features)
