@@ -27,9 +27,9 @@ if [ $MISSING_PREREQS -eq 1 ]; then
     echo "Please install the missing dependencies and run the setup again."
     echo ""
     echo "Installation commands for common distributions:"
-    echo "  Debian/Ubuntu: sudo apt update && sudo apt install curl python3"
-    echo "  Fedora:        sudo dnf install curl python3"
-    echo "  Arch Linux:    sudo pacman -S curl python3"
+    echo "  Debian/Ubuntu: sudo apt update && sudo apt install curl python3 python3-venv python3-pip"
+    echo "  Fedora:        sudo dnf install curl python3 python3-pip"
+    echo "  Arch Linux:    sudo pacman -S curl python python-pip"
     echo ""
     exit 1
 fi
