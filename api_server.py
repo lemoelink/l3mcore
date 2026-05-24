@@ -178,11 +178,15 @@ def _run_inference(messages: list, model_hint: str) -> tuple[str, str]:
         except Exception as e:
             app_logger.error(f"Error in engine for label '{label}': {e}")
 
-    # 3. Generic GGUF fallback if everything fails or router yields 'null'
-    app_logger.info("Using general AIEngine fallback")
-    result = ai_engine.generate_response(user_text)
-    result = plugin_mgr.hook_after_generation(result, "ai_engine")
-    return result, "ai_engine"
+    # 3. Generic fallback
+    app_logger.info("Using general fallback expert")
+    try:
+        result = _execute_expert("fallback")
+        warning = "[System: Fallback model deployed. Confidence was too low or no experts matched.]\n\n"
+        return warning + result, "fallback"
+    except Exception as e:
+        app_logger.error(f"Error in fallback engine: {e}")
+        return f"[System: Critical Error. Fallback model failed: {e}]", "error"
 
 
 def _extract_user_text(messages: list) -> str:

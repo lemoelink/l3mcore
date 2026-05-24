@@ -6,6 +6,22 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Comprobar actualizaciones
+if command -v git &> /dev/null && [ -d ".git" ]; then
+    echo "[LEMoE] Comprobando actualizaciones..."
+    git fetch https://github.com/lemoelink/LeMoE.git main -q 2>/dev/null || true
+    if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
+        echo -e "\033[1;32m"
+        echo "==========================================================="
+        echo "¡Hay una nueva actualización de LEMoE disponible!"
+        echo "Para actualizar, ejecuta el comando:"
+        echo "  git pull"
+        echo "==========================================================="
+        echo -e "\033[0m"
+    fi
+fi
+
+
 echo "LEMoE Setup"
 echo "==========="
 echo ""
@@ -86,10 +102,12 @@ fi
 echo ""
 
 # Plugin directory
-read -p "Enable plugin system? (creates plugins/ directory) [y/N]: " enable_plugins
+echo "Note: The plugin system is currently in testing (beta)."
+echo "There are no official plugins available at this time."
+read -p "Enable plugin system anyway? (creates plugins/ directory) [y/N]: " enable_plugins
 if [[ "$enable_plugins" =~ ^[Yy]$ ]]; then
     mkdir -p plugins
-    echo "plugins/ directory created."
+    echo "plugins/ directory created. (Testing mode)"
 else
     echo "Plugins disabled."
 fi
@@ -143,6 +161,25 @@ except Exception as e:
     print(f'Error downloading model: {e}')
     sys.exit(1)
 PYEOF
+
+echo ""
+echo "Do you want to download the generic fallback model (Qwen3.5-0.8B-Q4_K_M.gguf)?"
+echo "If you choose no, you must configure your own fallback model (API, Ollama, etc.) in config/experts.json."
+read -p "Download fallback model? [y/N]: " dl_fallback
+if [[ "$dl_fallback" =~ ^[Yy]$ ]]; then
+    echo "Downloading Qwen3.5-0.8B-Q4_K_M.gguf (approx 500MB)..."
+    mkdir -p models
+    curl -L "https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF/resolve/main/Qwen3.5-0.8B-Q4_K_M.gguf" -o models/Qwen3.5-0.8B-Q4_K_M.gguf
+    if [ $? -eq 0 ]; then
+        echo "Fallback model downloaded successfully."
+    else
+        echo "Failed to download the fallback model."
+    fi
+else
+    echo "Skipping fallback model download."
+fi
+
+
 
 if [ $? -eq 0 ]; then
     echo ""

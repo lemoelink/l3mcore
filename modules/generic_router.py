@@ -262,7 +262,8 @@ class GenericRouter:
                 passages = ["passage: " + kw for kw in keywords]
                 kw_vecs = self._model.encode(passages, convert_to_tensor=True, show_progress_bar=False)
             else:
-                app_logger.warning(f"Expert '{label}' has no keywords — embedding quality will be poor.")
+                if label != "fallback":
+                    app_logger.warning(f"Expert '{label}' has no keywords — embedding quality will be poor.")
                 kw_vecs = None
 
             # --- Centroid (normalised mean) ---

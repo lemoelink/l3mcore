@@ -1,6 +1,14 @@
 {
-  "max_experts": 15,
+  "max_experts": 16,
   "experts": [
+    {
+      "id": 0,
+      "label": "fallback",
+      "description": "General fallback model used when the router cannot classify the request.",
+      "type": "local",
+      "format": "gguf",
+      "model_path": "models/Qwen3.5-0.8B-Q4_K_M.gguf"
+    },
     {
       "id": 1,
       "label": "programador_python",

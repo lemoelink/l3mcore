@@ -11,6 +11,22 @@ WORKERS="${LEMOE_WORKERS:-1}"
 
 cd "$SCRIPT_DIR"
 
+# Comprobar actualizaciones
+if command -v git &> /dev/null && [ -d ".git" ]; then
+    echo "[LEMoE] Comprobando actualizaciones..."
+    git fetch https://github.com/lemoelink/LeMoE.git main -q 2>/dev/null || true
+    if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
+        echo -e "\033[1;32m"
+        echo "==========================================================="
+        echo "¡Hay una nueva actualización de LEMoE disponible!"
+        echo "Para actualizar, ejecuta el comando:"
+        echo "  git pull"
+        echo "==========================================================="
+        echo -e "\033[0m"
+    fi
+fi
+
+
 if [ ! -d "$VENV_DIR" ]; then
     echo "[LEMoE] Creating virtual environment..."
     python3 -m venv "$VENV_DIR"

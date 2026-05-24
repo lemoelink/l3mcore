@@ -17,5 +17,5 @@ litellm>=1.0.0
 onnxruntime>=1.15.0
 numpy>=1.24.0
 
-# Motor GGUF fallback (opcional, solo si se usa AIEngine)
-# llama-cpp-python>=0.2.0
+# Motor GGUF fallback
+llama-cpp-python>=0.2.0

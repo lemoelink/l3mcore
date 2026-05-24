@@ -137,8 +137,16 @@ Defines the list of specialist models the router dispatches to.
 
 ```json
 {
-  "max_experts": 15,
+  "max_experts": 16,
   "experts": [
+    {
+      "id": 0,
+      "label": "fallback",
+      "description": "General fallback model used when the router cannot classify the request.",
+      "type": "local",
+      "format": "gguf",
+      "model_path": "models/Qwen3.5-0.8B-Q4_K_M.gguf"
+    },
     {
       "id": 1,
       "label": "programador",
@@ -153,6 +161,9 @@ Defines the list of specialist models the router dispatches to.
   ]
 }
 ```
+
+**IMPORTANT: The Fallback Expert**
+The `fallback` expert (ID `0`) is mandatory and must not have any `keywords`. When the router's confidence falls below the `confidence_threshold`, or no keywords match, the system routes the request to this fallback expert. You can configure this fallback to use any backend (local GGUF, Ollama, API) just like any other expert.
 
 **Keyword quality is critical.** The embedding router builds individual semantic vectors for each keyword and combines them using a 4-signal scoring formula. A minimum of **15 descriptive keywords per expert** is required for reliable routing. With fewer keywords the `mean_keyword` and `top3_vote` signals are too sparse and accuracy drops.
 
