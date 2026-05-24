@@ -41,6 +41,8 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
   - External APIs (OpenAI, Anthropic, Gemini, etc. via LiteLLM)
   - Local Ollama instances
   - Local ONNX or GGUF models (Llama.cpp)
+- **Cascading Contextual Routing**: Stateless conversation-aware routing. When a user message is ambiguous (e.g. "Make it shorter"), the router evaluates the last 2-3 user messages from the conversation history to maintain topic continuity. No database or session state required -- each request carries its own context via the standard OpenAI messages array. Configurable via `context_messages` and `context_max_chars` in `config.json`.
+- **Silent Self-Correction**: If any expert fails (timeout, API down, connection refused), the system automatically and silently redirects the request to the fallback model. The user receives a normal response without knowing an error occurred. Administrators can monitor failures via `[Auto-Correction]` log entries.
 - **Smart Memory Management**: Limits RAM usage for local models (maximum 3 simultaneous), with LRU eviction and TTL-based automatic unloading after 5 minutes of inactivity.
 - **Rate Limiting**: Built-in per-IP sliding-window rate limiter (60 req/min by default). Supports `X-Forwarded-For` for reverse proxy setups.
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
@@ -121,6 +123,8 @@ The file `config/config.json` controls the routing engine.
 | `keyword_fallback` | bool | Enable keyword + fuzzy matching as secondary routing method. |
 | `softmax_temperature` | float | Controls sharpness of softmax normalization. Lower = more decisive (try 0.10-0.20). |
 | `scoring_weights` | object | Hybrid scoring signal weights. See [Scoring Weights](#scoring-weights-tuning). |
+| `context_messages` | int | Number of recent user messages to concatenate for cascade routing when the last message alone has low confidence. Default: `3`. |
+| `context_max_chars` | int | Maximum characters for concatenated context text, to respect the embedding model token window. Default: `1600`. |
 
 **Recommended router models:**
 
@@ -267,13 +271,16 @@ Tuning guidelines:
 User query
     │
     ▼
-Embedding / Classification model
+Cascade Step 1: Evaluate last user message
+    │ score < confidence_threshold
+    ▼
+Cascade Step 2: Evaluate last 2-3 user messages (concatenated)
     │ score < confidence_threshold
     ▼
 Keyword + Fuzzy matching (rapidfuzz)
     │ score < threshold * 0.5
     ▼
-General GGUF fallback (AIEngine)
+Fallback expert (ID 0)
 ```
 
 ---
@@ -336,7 +343,28 @@ LEMoE includes hardened defaults for production-adjacent use:
 | **Rate Limiting** | Sliding-window rate limiter: 60 requests per minute per IP. Respects `X-Forwarded-For` when behind a reverse proxy. Returns HTTP 429 when exceeded. |
 | **Log Sanitization** | User input is stripped of control characters and ANSI escape sequences before being written to log files. |
 | **Config Path Validation** | `categories_file` paths in `config.json` are resolved and must stay within the project directory. |
+| **Silent Error Isolation** | Internal exceptions from expert backends are never exposed to the end user. Error details are logged server-side only. The user receives a generic fallback response. |
 | **Atomic File Writes** | Model stats are written atomically (write to `.tmp`, then `os.replace()`) to prevent corruption on crash. |
+
+---
+
+## Testing
+
+LEMoE includes an adversarial test suite designed to validate security and edge-case handling:
+
+```bash
+source venv/bin/activate && python3 tests/test_adversarial.py
+```
+
+The suite includes 42 tests covering:
+- Malformed and missing message content
+- Injection attempts (SQL, XSS, path traversal, null bytes)
+- Multimodal content edge cases
+- Unicode stress testing (emoji, CJK, Arabic, RTL)
+- Memory abuse (1MB payloads, 10000 empty messages)
+- Rate limiter memory exhaustion
+- HTTP method enforcement
+- Security header validation
 
 ---
 
@@ -355,6 +383,8 @@ LEMoE - Light Easy Mix Of Experts/
 ├── models/                # Local ONNX or GGUF model directories
 ├── data/                  # Runtime data (model usage stats)
 ├── logs/                  # Application logs
+├── tests/
+│   └── test_adversarial.py  # Adversarial test suite (42 tests)
 └── modules/
     ├── generic_router.py  # Hybrid embedding/classification router
     ├── decision_router.py # Fine-tuned classifier router (model mode)

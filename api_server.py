@@ -97,9 +97,10 @@ class _Core:
         )
         ai_engine = AIEngine()
         dispatcher = ExpertDispatcher(runner, ai_engine)
-        
-        # Dynamic list of available models
+        plugin_mgr = PluginManager()
+
         available = _load_available_models(config)
+        expert_models = [m for m in available if m != DEFAULT_MODEL]
         app_logger.info(f"LEMoE Core ready. Models: {available}")
         return {
             "config": config,
@@ -107,7 +108,9 @@ class _Core:
             "runner": runner,
             "ai_engine": ai_engine,
             "dispatcher": dispatcher,
+            "plugin_mgr": plugin_mgr,
             "available_models": available,
+            "expert_models": expert_models,
         }
 
 
@@ -115,93 +118,144 @@ class _Core:
 # Main inference function
 # ---------------------------------------------------------------------------
 
+def _extract_routing_context(messages: list, max_messages: int = 3,
+                              max_chars: int = 1600) -> dict:
+    """
+    Extracts routing context from the conversation history.
+
+    Returns a dict with:
+      - last_user_text:  text of the most recent user message (Step 1).
+      - context_text:    concatenation of the last N user messages (Step 2).
+    """
+    if not messages or not isinstance(messages, list):
+        return {"last_user_text": "", "context_text": ""}
+
+    user_messages = []
+    for msg in messages:
+        if not isinstance(msg, dict) or msg.get("role") != "user":
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            text = " ".join(
+                part.get("text", "") for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+        else:
+            text = str(content)
+        text = text.strip()
+        if text:
+            user_messages.append(text)
+
+    last_user_text = user_messages[-1] if user_messages else ""
+
+    recent = user_messages[-max_messages:] if len(user_messages) > 1 else []
+    context_text = " ".join(recent)
+    if len(context_text) > max_chars:
+        context_text = context_text[-max_chars:]
+
+    if not context_text:
+        context_text = last_user_text
+    if len(context_text) > max_chars:
+        context_text = context_text[-max_chars:]
+
+    return {
+        "last_user_text": last_user_text,
+        "context_text": context_text,
+    }
+
+
 def _run_inference(messages: list, model_hint: str) -> tuple[str, str]:
     """
-    Executes inference based on the requested model.
+    Executes inference with cascading contextual routing.
     Returns: (response_text, used_model)
     """
     core = _Core.get()
     router        = core["router"]
+    config        = core["config"]
     dispatcher    = core["dispatcher"]
     ai_engine     = core["ai_engine"]
-    available     = core["available_models"]
-    expert_models = [m for m in available if m != DEFAULT_MODEL]
-    plugin_mgr    = PluginManager()
+    expert_models = core["expert_models"]
+    plugin_mgr    = core["plugin_mgr"]
 
-    # Extract user text for the semantic router
-    user_text = _extract_user_text(messages)
+    router_cfg   = config.get('router', {})
+    ctx_messages = router_cfg.get('context_messages', 3)
+    ctx_chars    = router_cfg.get('context_max_chars', 1600)
+    threshold    = router_cfg.get('confidence_threshold', 0.4)
 
-    # Plugin Hook: override route (for multimodality, etc.)
+    routing_ctx = _extract_routing_context(messages, ctx_messages, ctx_chars)
+
     override_label = plugin_mgr.hook_override_route(messages)
 
-    # Plugin Hook: before_routing
-    user_text = plugin_mgr.hook_before_routing(user_text)
+    last_text = plugin_mgr.hook_before_routing(routing_ctx["last_user_text"])
+    ctx_text  = plugin_mgr.hook_before_routing(routing_ctx["context_text"])
 
-    # Helper to execute an expert knowing its label
     def _execute_expert(label: str) -> str:
-        # 'generic' mode: use dispatcher with config json
         if hasattr(router, 'get_expert_config'):
             expert_config = router.get_expert_config(label)
             if expert_config:
                 result = dispatcher.run(messages, expert_config)
                 return plugin_mgr.hook_after_generation(result, label)
-        
-        # Fallback 'model' mode (grape-route) or if no config exists
-        # In this case, we assume local ONNX model
         cfg = {"type": "local", "format": "onnx", "label": label}
         result = dispatcher.run(messages, cfg)
         return plugin_mgr.hook_after_generation(result, label)
 
-    # 0. If plugin forced a route, use it
+    def _do_fallback() -> tuple[str, str]:
+        try:
+            result = _execute_expert("fallback")
+            return result, "fallback"
+        except Exception as e:
+            app_logger.error(f"Critical error in fallback engine: {e}")
+            return "An internal error occurred. Please try again later.", "error"
+
+    # Phase 0: Plugin forced route
     if override_label:
         try:
             app_logger.info(f"Plugin forced route to: {override_label}")
             result = _execute_expert(override_label)
             return result, override_label
         except Exception as e:
-            app_logger.error(f"Error in forced route '{override_label}': {e}")
+            app_logger.error(f"[Auto-Correction] Plugin forced route '{override_label}' failed: {e}. Redirecting to fallback.")
+            return _do_fallback()
 
-    # 1. If client asks for a specific expert and it exists, use it directly
+    # Phase 1: Client explicitly requests a known expert
     if model_hint and model_hint in expert_models:
         try:
             result = _execute_expert(model_hint)
             return result, model_hint
         except Exception as e:
-            app_logger.error(f"Error in explicit expert '{model_hint}': {e}")
+            app_logger.error(f"[Auto-Correction] Explicit expert '{model_hint}' failed: {e}. Redirecting to fallback.")
+            return _do_fallback()
 
-    # 2. Semantic router
-    label, score = router.predict(user_text)
-    if label and label != 'null':
+    # Phase 2: Cascade Step 1 - evaluate last user message only
+    label, score = router.predict(last_text)
+    if label and label not in ('null', 'fallback') and score >= threshold:
+        app_logger.info(f"[Cascade] Step 1: '{last_text[:60]}' -> {label} ({score:.2f})")
         try:
             result = _execute_expert(label)
             return result, label
         except Exception as e:
-            app_logger.error(f"Error in engine for label '{label}': {e}")
+            app_logger.error(f"[Auto-Correction] Routed expert '{label}' failed: {e}. Redirecting to fallback.")
+            return _do_fallback()
+    else:
+        app_logger.info(f"[Cascade] Step 1: score {score:.2f} below threshold ({threshold}). Escalating to Step 2.")
 
-    # 3. Generic fallback
-    app_logger.info("Using general fallback expert")
-    try:
-        result = _execute_expert("fallback")
-        warning = "[System: Fallback model deployed. Confidence was too low or no experts matched.]\n\n"
-        return warning + result, "fallback"
-    except Exception as e:
-        app_logger.error(f"Error in fallback engine: {e}")
-        return f"[System: Critical Error. Fallback model failed: {e}]", "error"
+    # Phase 3: Cascade Step 2 - evaluate concatenated recent user messages
+    if ctx_text != last_text:
+        label, score = router.predict(ctx_text)
+        if label and label not in ('null', 'fallback') and score >= threshold:
+            app_logger.info(f"[Cascade] Step 2: '{ctx_text[:60]}' -> {label} ({score:.2f})")
+            try:
+                result = _execute_expert(label)
+                return result, label
+            except Exception as e:
+                app_logger.error(f"[Auto-Correction] Routed expert '{label}' failed: {e}. Redirecting to fallback.")
+                return _do_fallback()
+        else:
+            app_logger.info(f"[Cascade] Step 2: score {score:.2f} below threshold ({threshold}). Using fallback.")
 
-
-def _extract_user_text(messages: list) -> str:
-    """Extracts content from the last 'user' role message."""
-    for msg in reversed(messages):
-        if msg.get("role") == "user":
-            content = msg.get("content", "")
-            if isinstance(content, list):
-                # Multimodal format: [{type: "text", text: "..."}]
-                return " ".join(
-                    part["text"] for part in content
-                    if isinstance(part, dict) and part.get("type") == "text"
-                )
-            return str(content)
-    return ""
+    # Phase 4: Fallback
+    app_logger.info("[Cascade] No expert matched. Using fallback.")
+    return _do_fallback()
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +298,13 @@ def _rate_limit_check(max_requests: int = 100, window_seconds: int = 60) -> bool
         if len(_rl_counts[ip]) >= max_requests:
             return False
         _rl_counts[ip].append(now)
+
+        # Purge stale IPs to prevent unbounded memory growth
+        if len(_rl_counts) > 10000:
+            stale = [k for k, v in _rl_counts.items() if not v]
+            for k in stale:
+                del _rl_counts[k]
+
         return True
 
 
@@ -320,11 +381,12 @@ def chat_completions():
         return jsonify({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}), 429
 
     body = request.get_json(force=True, silent=True) or {}
-    messages    = body.get("messages", [])
+    messages    = body.get("messages") or []
     model_hint  = body.get("model", DEFAULT_MODEL)
     do_stream   = body.get("stream", False)
 
-    user_text = _extract_user_text(messages)
+    routing_ctx = _extract_routing_context(messages)
+    user_text = routing_ctx["last_user_text"]
     if not user_text:
         return jsonify({"error": {"message": "No user message found", "type": "invalid_request_error"}}), 400
 
@@ -402,11 +464,12 @@ def ollama_chat():
         return jsonify({"error": "Rate limit exceeded"}), 429
 
     body = request.get_json(force=True, silent=True) or {}
-    messages   = body.get("messages", [])
+    messages   = body.get("messages") or []
     model_hint = body.get("model", DEFAULT_MODEL)
     do_stream  = body.get("stream", True)  # Ollama defaults to stream=true
 
-    user_text = _extract_user_text(messages)
+    routing_ctx = _extract_routing_context(messages)
+    user_text = routing_ctx["last_user_text"]
     if not user_text:
         return jsonify({"error": "No user message found"}), 400
 
