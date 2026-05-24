@@ -85,6 +85,33 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 ---
 
+## Docker Installation
+
+LEMoE is available on Docker Hub and can be run entirely via Docker, avoiding the need to install Python dependencies on your host.
+
+```bash
+# Run the default Debian Slim image
+docker run -d -p 11435:11435 \
+  -v ./config:/app/config \
+  -v ./models:/app/models \
+  -v ./data:/app/data \
+  --name lemoe \
+  lemoelink/lemoe:general
+```
+
+### Available Tags
+
+- `lemoelink/lemoe:general` (Default): Built on Debian Slim. Optimized for CPU inference. Smallest footprint with maximum compatibility.
+- `lemoelink/lemoe:debian`: Built on standard Debian. Identical to `general` but includes full OS libraries.
+- `lemoelink/lemoe:cuda`: (Beta) Built on Nvidia CUDA. Use this if you are running Llama.cpp models with GPU acceleration. Requires the `--gpus all` flag when running the container.
+
+**Volume Mounts:**
+- `/app/config`: Maps your `config.json` and `experts.json` so you can edit routing rules on the fly without rebuilding.
+- `/app/models`: Persists downloaded GGUF/ONNX models and HuggingFace caches across container restarts.
+- `/app/data`: Persists LRU/TTL runtime metrics.
+
+---
+
 ## Configuration
 
 All configuration lives in the `config/` folder.
@@ -348,25 +375,6 @@ LEMoE includes hardened defaults for production-adjacent use:
 
 ---
 
-## Testing
-
-LEMoE includes an adversarial test suite designed to validate security and edge-case handling:
-
-```bash
-source venv/bin/activate && python3 tests/test_adversarial.py
-```
-
-The suite includes 42 tests covering:
-- Malformed and missing message content
-- Injection attempts (SQL, XSS, path traversal, null bytes)
-- Multimodal content edge cases
-- Unicode stress testing (emoji, CJK, Arabic, RTL)
-- Memory abuse (1MB payloads, 10000 empty messages)
-- Rate limiter memory exhaustion
-- HTTP method enforcement
-- Security header validation
-
----
 
 ## Project Structure
 
@@ -383,6 +391,10 @@ LEMoE - Light Easy Mix Of Experts/
 ├── models/                # Local ONNX or GGUF model directories
 ├── data/                  # Runtime data (model usage stats)
 ├── logs/                  # Application logs
+├── docker/                # Dockerfiles for various platforms
+│   ├── Dockerfile         # Default Debian Slim (CPU)
+│   ├── Dockerfile.debian  # Standard Debian (CPU)
+│   └── Dockerfile.cuda    # Nvidia CUDA (GPU)
 ├── tests/
 │   └── test_adversarial.py  # Adversarial test suite (42 tests)
 └── modules/
