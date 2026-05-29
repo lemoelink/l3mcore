@@ -46,6 +46,7 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 - **Smart Memory Management**: Limits RAM usage for local models (maximum 3 simultaneous), with LRU eviction and TTL-based automatic unloading after 5 minutes of inactivity.
 - **Rate Limiting**: Built-in per-IP sliding-window rate limiter (60 req/min by default). Supports `X-Forwarded-For` for reverse proxy setups.
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
+- **Extensible Plugin System**: Customize pre- and post-processing steps or override routing rules using Python hooks (`override_route`, `before_routing`, `after_generation`). Official and community plugins are hosted at the [plugins repository](https://github.com/lemoelink/plugins), with new ones being released gradually.
 
 ---
 
