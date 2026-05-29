@@ -1,0 +1,42 @@
+# Version control
+.git/
+.gitignore
+
+# Python caching & environments
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+.venv
+env/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Editor & OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# App specific exclusions
+models/*
+!models/.keep
+data/*
+!data/.keep
+logs/*
+!logs/.keep
+config/*
+!config/config.json
+!config/experts.json
+private/
+
+# Local scripts & artifacts
+setup.sh
+start.sh
+test_adversarial.py
+tests/
+README.md
+.gemini/

@@ -60,7 +60,7 @@ class AIEngine:
     def _ensure_model_loaded(self):
         """Loads the model if it is not already in memory (lazy load)."""
         self.last_access = time.time()
-        if not self.llm and LLAMA_AVAILABLE:
+        if LLAMA_AVAILABLE:
             with self._cleanup_lock:
                 if not self.llm:
                     self.load_model()

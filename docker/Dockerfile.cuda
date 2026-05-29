@@ -1,0 +1,52 @@
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    HF_HOME=/app/models/huggingface
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    python3.10 \
+    python3.10-dev \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Alias python3 to python
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install CUDA-specific PyTorch
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu121
+
+# Install other requirements (llama-cpp-python with pre-built CUDA 12.1 wheel)
+RUN pip install --no-cache-dir llama-cpp-python \
+    --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu121 \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Copy application source code
+COPY api_server.py .
+COPY modules/ ./modules/
+COPY config/ ./config/
+
+# Ensure directories exist for volumes
+RUN mkdir -p /app/models /app/data /app/logs
+
+# Expose the API port
+EXPOSE 11435
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:11435/ || exit 1
+
+# Run the WSGI server
+CMD ["gunicorn", "-w", "1", "-b", "0.0.0.0:11435", "--timeout", "120", "api_server:app"]

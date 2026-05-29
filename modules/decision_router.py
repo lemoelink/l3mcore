@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import threading
 from pathlib import Path
 from modules.logger import app_logger
 
@@ -24,6 +25,7 @@ class DecisionRouter:
         self.classifier = None
         self._predict_cache: dict[str, tuple] = {}
         self._cache_max_size = 128
+        self._cache_lock = threading.Lock()
 
         self._load_config()
         if self.enabled and TRANSFORMERS_AVAILABLE:
@@ -69,8 +71,9 @@ class DecisionRouter:
         Cached prediction for repeated queries.
         Returns: tuple (label, score)
         """
-        if text in self._predict_cache:
-            return self._predict_cache[text]
+        with self._cache_lock:
+            if text in self._predict_cache:
+                return self._predict_cache[text]
 
         if not self.enabled or not hasattr(self, '_model'):
             return None, 0.0
@@ -91,12 +94,12 @@ class DecisionRouter:
             app_logger.error(f"Error in Router Predict: {e}")
             return None, 0.0
 
-        # Store in instance cache, evict oldest entry if at capacity
         result = (best_label, best_score)
-        if len(self._predict_cache) >= self._cache_max_size:
-            oldest = next(iter(self._predict_cache))
-            del self._predict_cache[oldest]
-        self._predict_cache[text] = result
+        with self._cache_lock:
+            if len(self._predict_cache) >= self._cache_max_size:
+                oldest = next(iter(self._predict_cache))
+                del self._predict_cache[oldest]
+            self._predict_cache[text] = result
         return result
 
     def _clean_text(self, text: str) -> str:

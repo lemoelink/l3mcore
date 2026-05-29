@@ -29,6 +29,7 @@ import re
 import math
 import json
 import logging
+import threading
 from pathlib import Path
 from modules.logger import app_logger
 
@@ -90,6 +91,7 @@ class GenericRouter:
         self.softmax_temperature: float = 0.15
         self._predict_cache: dict[str, tuple] = {}
         self._cache_max_size = 256
+        self._cache_lock = threading.Lock()
 
         self._load_config()
         self._load_categories()
@@ -339,9 +341,9 @@ class GenericRouter:
 
     def _model_predict(self, text: str) -> tuple:
         """ML model prediction. Returns (label, score)."""
-        # OPT-2: instance-level cache — no lru_cache on self (memory leak)
-        if text in self._predict_cache:
-            return self._predict_cache[text]
+        with self._cache_lock:
+            if text in self._predict_cache:
+                return self._predict_cache[text]
 
         if not self._model:
             return None, 0.0
@@ -352,24 +354,20 @@ class GenericRouter:
                 if not self.category_embeddings:
                     return None, 0.0
 
-                # Encode query with e5 prefix
                 query_vec = self._model.encode(
                     "query: " + text,
                     convert_to_tensor=True,
                     show_progress_bar=False
                 )
 
-                # Compute hybrid score for every expert
                 raw_scores: dict[str, float] = {}
                 for label, label_data in self.category_embeddings.items():
                     raw_scores[label] = self._embed_score(query_vec, label_data)
 
-                # Softmax normalization — sharpens differences between experts
-                # so the winner's score becomes a real probability rather than
-                # an arbitrary cosine value that varies by model.
                 temp = self.softmax_temperature
-                exp_scores = {l: math.exp(s / temp) for l, s in raw_scores.items()}
-                total      = sum(exp_scores.values())
+                max_raw = max(raw_scores.values())
+                exp_scores = {l: math.exp((s - max_raw) / temp) for l, s in raw_scores.items()}
+                total = sum(exp_scores.values())
                 norm_scores = {l: v / total for l, v in exp_scores.items()}
 
                 best_label = max(norm_scores, key=norm_scores.__getitem__)
@@ -381,7 +379,6 @@ class GenericRouter:
                 result = (best_label, best_score)
 
             else:
-                # Classic Classification
                 if not self._tokenizer:
                     return None, 0.0
 
@@ -399,11 +396,11 @@ class GenericRouter:
             app_logger.error(f"Error in GenericRouter model predict: {e}")
             return None, 0.0
 
-        # Store in instance cache, evict oldest entry if at capacity
-        if len(self._predict_cache) >= self._cache_max_size:
-            oldest = next(iter(self._predict_cache))
-            del self._predict_cache[oldest]
-        self._predict_cache[text] = result
+        with self._cache_lock:
+            if len(self._predict_cache) >= self._cache_max_size:
+                oldest = next(iter(self._predict_cache))
+                del self._predict_cache[oldest]
+            self._predict_cache[text] = result
         return result
 
     def _keyword_predict(self, text: str) -> tuple:

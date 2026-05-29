@@ -102,12 +102,11 @@ fi
 echo ""
 
 # Plugin directory
-echo "Note: The plugin system is currently in testing (beta)."
-echo "There are no official plugins available at this time."
-read -p "Enable plugin system anyway? (creates plugins/ directory) [y/N]: " enable_plugins
+echo "Enable plugin system? (creates plugins/ directory)"
+read -p "Enable plugins? [y/N]: " enable_plugins
 if [[ "$enable_plugins" =~ ^[Yy]$ ]]; then
     mkdir -p plugins
-    echo "plugins/ directory created. (Testing mode)"
+    echo "plugins/ directory created."
 else
     echo "Plugins disabled."
 fi
