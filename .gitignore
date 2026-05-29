@@ -27,7 +27,7 @@ web/
 # Tests (no se publican en el núcleo)
 tests/
 test_router.py
-
+docker/
 # Modelos binarios (demasiado grandes para Git)
 *.onnx
 *.gguf
