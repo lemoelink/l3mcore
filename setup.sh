@@ -6,15 +6,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Comprobar actualizaciones
+# Check for updates
 if command -v git &> /dev/null && [ -d ".git" ]; then
-    echo "[LEMoE] Comprobando actualizaciones..."
-    git fetch https://github.com/lemoelink/LeMoE.git main -q 2>/dev/null || true
+    echo "[LEMoE] Checking for updates..."
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+    git fetch https://github.com/lemoelink/LeMoE.git "$CURRENT_BRANCH" -q 2>/dev/null || true
     if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
         echo -e "\033[1;32m"
         echo "==========================================================="
-        echo "¡Hay una nueva actualización de LEMoE disponible!"
-        echo "Para actualizar, ejecuta el comando:"
+        echo "A new LEMoE update is available on branch $CURRENT_BRANCH!"
+        echo "To update, run the command:"
         echo "  git pull"
         echo "==========================================================="
         echo -e "\033[0m"
@@ -39,27 +40,39 @@ if ! command -v python3 &> /dev/null; then
     MISSING_PREREQS=1
 fi
 
+if ! command -v gcc &> /dev/null && ! command -v clang &> /dev/null; then
+    echo "Error: A C/C++ compiler ('gcc' or 'clang') is required to compile native dependencies (e.g., llama-cpp-python) but none was found."
+    MISSING_PREREQS=1
+fi
+
+if ! command -v make &> /dev/null; then
+    echo "Error: 'make' is required to compile native dependencies but was not found."
+    MISSING_PREREQS=1
+fi
+
 if [ $MISSING_PREREQS -eq 1 ]; then
     echo "Please install the missing dependencies and run the setup again."
     echo ""
     echo "Installation commands for common distributions:"
-    echo "  Debian/Ubuntu: sudo apt update && sudo apt install curl python3 python3-venv python3-pip"
-    echo "  Fedora:        sudo dnf install curl python3 python3-pip"
-    echo "  Arch Linux:    sudo pacman -S curl python python-pip"
+    echo "  Debian/Ubuntu: sudo apt update && sudo apt install curl python3 python3-venv python3-pip build-essential"
+    echo "  Fedora:        sudo dnf install curl python3 python3-pip gcc gcc-c++ make"
+    echo "  Arch Linux:    sudo pacman -S curl python python-pip base-devel"
     echo ""
     exit 1
 fi
 
 echo ""
 echo "Setting up Python virtual environment..."
-if [ ! -d "venv" ]; then
+if [ ! -f "venv/bin/activate" ]; then
+    echo "Virtual environment not found or incomplete. Recreating venv..."
+    rm -rf venv
     python3 -m venv venv
 fi
 source venv/bin/activate
 echo "Installing dependencies..."
-pip install --upgrade pip -q
-pip install -r requirements.txt -q
-pip install torch --index-url https://download.pytorch.org/whl/cpu -q
+pip install --upgrade pip
+pip install -r requirements.txt
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 # Check Ollama
 if ! command -v ollama &> /dev/null; then

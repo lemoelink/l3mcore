@@ -14,11 +14,12 @@ cd "$SCRIPT_DIR"
 # Comprobar actualizaciones
 if command -v git &> /dev/null && [ -d ".git" ]; then
     echo "[LEMoE] Comprobando actualizaciones..."
-    git fetch https://github.com/lemoelink/LeMoE.git main -q 2>/dev/null || true
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+    git fetch https://github.com/lemoelink/LeMoE.git "$CURRENT_BRANCH" -q 2>/dev/null || true
     if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
         echo -e "\033[1;32m"
         echo "==========================================================="
-        echo "¡Hay una nueva actualización de LEMoE disponible!"
+        echo "¡Hay una nueva actualización de LEMoE disponible en la rama $CURRENT_BRANCH!"
         echo "Para actualizar, ejecuta el comando:"
         echo "  git pull"
         echo "==========================================================="
