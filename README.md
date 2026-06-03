@@ -1,6 +1,6 @@
 # LEMoE - Light Easy Mix Of Experts
 
-> Al descargar este software aceptas los términos de la licencia PolyForm Noncommercial 1.0.0 [https://polyformproject.org/licenses/noncommercial/1.0.0]
+> By downloading this software you agree to the Polyform license terms / Al descargar este software aceptas los términos de la licencia PolyForm Noncommercial 1.0.0 [https://polyformproject.org/licenses/noncommercial/1.0.0]
 
 
 > [!WARNING]
