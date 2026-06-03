@@ -1,5 +1,8 @@
 # LEMoE - Light Easy Mix Of Experts
 
+> Al descargar este software aceptas los términos de la licencia PolyForm Noncommercial 1.0.0 [https://polyformproject.org/licenses/noncommercial/1.0.0]
+
+
 > [!WARNING]
 > **Fase de Desarrollo / In Development**
 > Este proyecto se encuentra actualmente en fase de desarrollo activo. Sin embargo, su funcionalidad principal (enrutamiento, carga de modelos y backends) es completamente operativa y estable para su uso.
