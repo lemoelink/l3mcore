@@ -11,6 +11,12 @@ WORKERS="${LEMOE_WORKERS:-1}"
 
 cd "$SCRIPT_DIR"
 
+# Cargar variables de entorno desde .env si existe
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    echo "[LEMoE] Cargando variables de entorno desde .env..."
+    export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
+fi
+
 # Comprobar actualizaciones
 if command -v git &> /dev/null && [ -d ".git" ]; then
     echo "[LEMoE] Comprobando actualizaciones..."

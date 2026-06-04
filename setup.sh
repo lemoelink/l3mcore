@@ -192,6 +192,48 @@ else
 fi
 
 
+# Custom Paperless Search models
+if [[ "$enable_plugins" =~ ^[Yy]$ ]] && [ -f "plugins/paperless_search.py" ]; then
+    echo ""
+    echo "Do you want to download the custom BERT and DeBERTa models for the Paperless Search plugin?"
+    read -p "Download Paperless Search models? [y/N]: " dl_paperless
+    if [[ "$dl_paperless" =~ ^[Yy]$ ]]; then
+        echo "Downloading custom BERT and DeBERTa models (this may take a few minutes)..."
+        python3 - <<PYEOF
+import sys
+import os
+sys.path.insert(0, os.getcwd())
+try:
+    import plugins.paperless_search as p
+    p._is_testing = False
+    print("Downloading BERT Classifier...")
+    p._perform_update_for(
+        model_name_log="Clasificador BERT",
+        model_dir=p.MODEL_DIR,
+        hf_api_url=p.HF_API_URL,
+        hf_resolve_url=p.HF_RESOLVE_URL,
+        files_list=p.FILES_TO_DOWNLOAD,
+        reload_callback=lambda: None
+    )
+    print("Downloading DeBERTa Distiller...")
+    p._perform_update_for(
+        model_name_log="Destilador DeBERTa",
+        model_dir=p.DISTILLER_DIR,
+        hf_api_url=p.HF_API_URL_DISTILLER,
+        hf_resolve_url=p.HF_RESOLVE_URL_DISTILLER,
+        files_list=p.FILES_TO_DOWNLOAD_DISTILLER,
+        reload_callback=lambda: None
+    )
+    print("Paperless Search models ready.")
+except Exception as e:
+    print(f"Error downloading Paperless Search models: {e}")
+    sys.exit(1)
+PYEOF
+    fi
+fi
+
+
+
 
 if [ $? -eq 0 ]; then
     echo ""

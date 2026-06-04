@@ -15,24 +15,42 @@ except ImportError:
     app_logger.warning("litellm is not installed. External API calls may fail.")
 
 
-# Schemes accepted for Ollama endpoints
 _ALLOWED_SCHEMES = {"http", "https"}
 
-# Cloud metadata / link-local ranges always blocked (SEC-2)
+# Cloud metadata / link-local ranges always blocked
 _BLOCKED_NETWORKS = [
     ipaddress.ip_network("169.254.0.0/16"),  # AWS/GCP/Azure metadata + link-local
     ipaddress.ip_network("100.64.0.0/10"),   # Carrier-grade NAT
 ]
 
+# Default Ollama hostname allowlist. Add more entries in config.json under
+# expert_runner.ollama_allowed_hosts if needed.
+_DEFAULT_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
 
-def _validate_ollama_url(url: str) -> str:
+_DEFAULT_API_TIMEOUT = 60  # seconds
+
+
+def _get_runner_config(config_manager=None) -> dict:
+    if config_manager is None:
+        return {}
+    return config_manager.get("expert_runner", {})
+
+
+def _validate_ollama_url(url: str, allowed_hosts: set | None = None) -> str:
     """
-    SEC-2: Validate an Ollama endpoint URL.
-    - Only http/https schemes allowed.
-    - Blocks cloud metadata IP ranges (169.254.x.x etc).
-    - Private/loopback IPs allowed by default (internal use case).
+    Validates an Ollama endpoint URL.
+
+    - Only http/https schemes are accepted.
+    - Cloud metadata IP ranges (169.254.x.x etc.) are always blocked.
+    - Hostname validation: if the value resolves to an IP it is checked against
+      the blocked networks; if it is a plain hostname it must be in allowed_hosts.
+    - Private/loopback IPs are allowed by default.
+
     Raises ValueError on invalid URLs.
     """
+    if allowed_hosts is None:
+        allowed_hosts = _DEFAULT_ALLOWED_HOSTS
+
     try:
         parsed = urlparse(url)
     except Exception as exc:
@@ -49,17 +67,40 @@ def _validate_ollama_url(url: str) -> str:
         addr = ipaddress.ip_address(hostname)
         for net in _BLOCKED_NETWORKS:
             if addr in net:
-                raise ValueError(
-                    f"Ollama URL points to a blocked network ({net}): {url}"
-                )
+                raise ValueError(f"Ollama URL points to a blocked network ({net}): {url}")
     except ValueError as exc:
-        # If it's not an IP but the ValueError is ours, re-raise
         if "blocked network" in str(exc) or "scheme" in str(exc):
             raise
-        # Otherwise it's a hostname — allow it (DNS resolution not checked here)
-        pass
+        # It's a plain hostname — check against the allowlist
+        if hostname not in allowed_hosts:
+            raise ValueError(
+                f"Ollama hostname '{hostname}' is not in the allowed hosts list. "
+                f"Add it to expert_runner.ollama_allowed_hosts in config.json."
+            )
 
     return url
+
+
+def _extract_text_from_messages(messages) -> str:
+    """Extracts a plain text string from a messages list for local model inference."""
+    if isinstance(messages, str):
+        return messages
+
+    parts = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            parts.append(content)
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, str):
+                    parts.append(part)
+                elif isinstance(part, dict):
+                    if part.get("type", "text") == "text":
+                        parts.append(str(part.get("text", part.get("content", ""))))
+    return " ".join(parts)
 
 
 class ExpertDispatcher:
@@ -74,9 +115,13 @@ class ExpertDispatcher:
       'local'  -> Local ONNX model (via SpecificModelRunner) or GGUF (via AIEngine).
     """
 
-    def __init__(self, onnx_runner, ai_engine):
+    def __init__(self, onnx_runner, ai_engine, config_manager=None):
         self.onnx_runner = onnx_runner
         self.ai_engine = ai_engine
+        self._config_manager = config_manager
+
+    def _runner_cfg(self) -> dict:
+        return _get_runner_config(self._config_manager)
 
     def run(self, messages, expert_config: dict) -> str:
         expert_type = expert_config.get('type', 'local').lower()
@@ -97,7 +142,7 @@ class ExpertDispatcher:
         if not LITELLM_AVAILABLE:
             raise ImportError("litellm required for 'api' type experts")
 
-        provider   = config.get('provider', '')
+        provider = config.get('provider', '')
         model_name = config.get('model_name', '')
         if not model_name:
             raise ValueError("model_name required for 'api' expert")
@@ -109,7 +154,10 @@ class ExpertDispatcher:
         if not api_key:
             app_logger.warning(f"API key not found in env var '{env_var}'. litellm will try its defaults.")
 
-        app_logger.info(f"ExpertDispatcher [api]: calling {litellm_model}")
+        cfg = self._runner_cfg()
+        timeout = cfg.get("api_timeout", _DEFAULT_API_TIMEOUT)
+
+        app_logger.info(f"ExpertDispatcher [api]: calling {litellm_model} (timeout={timeout}s)")
 
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
@@ -117,15 +165,20 @@ class ExpertDispatcher:
         response = litellm.completion(
             model=litellm_model,
             messages=messages,
-            api_key=api_key
+            api_key=api_key,
+            timeout=timeout,
         )
         return response.choices[0].message.content.strip()
 
     def _run_ollama(self, messages, config: dict) -> str:
-        raw_url    = config.get('url', 'http://127.0.0.1:11434').rstrip('/')
+        raw_url = config.get('url', 'http://127.0.0.1:11434').rstrip('/')
         model_name = config.get('model_name', 'llama3')
 
-        url      = _validate_ollama_url(raw_url)
+        cfg = self._runner_cfg()
+        allowed_hosts = set(cfg.get("ollama_allowed_hosts", [])) | _DEFAULT_ALLOWED_HOSTS
+        timeout = cfg.get("ollama_timeout", _DEFAULT_API_TIMEOUT)
+
+        url = _validate_ollama_url(raw_url, allowed_hosts=allowed_hosts)
         endpoint = f"{url}/api/chat"
         app_logger.info(f"ExpertDispatcher [ollama]: POST {endpoint} ({model_name})")
 
@@ -133,50 +186,33 @@ class ExpertDispatcher:
             messages = [{"role": "user", "content": messages}]
 
         data = {"model": model_name, "messages": messages, "stream": False}
-        req  = urllib.request.Request(
+        req = urllib.request.Request(
             endpoint,
             data=json.dumps(data).encode('utf-8'),
             headers={'Content-Type': 'application/json'}
         )
         try:
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
                 result = json.loads(resp.read().decode('utf-8'))
                 return result.get('message', {}).get('content', '').strip()
         except urllib.error.URLError as e:
             raise RuntimeError(f"Error connecting to Ollama at {url}: {e}")
 
-    # --------------------------------------------------------------------- LOCAL
-
     def _run_local(self, messages, config: dict) -> str:
-        """
-        Runs local inference via SpecificModelRunner (ONNX) or AIEngine (GGUF).
-        """
         model_format = config.get('format', 'onnx').lower()
-        
-        text = messages
-        if isinstance(messages, list):
-            # Extract text for local models that only accept strings
-            text = " ".join(
-                str(part.get("text", part.get("content", ""))) if isinstance(part, dict) else str(part)
-                for msg in messages for part in ([msg["content"]] if isinstance(msg.get("content"), str) else msg.get("content", []))
-                if isinstance(part, dict) and part.get("type", "text") == "text" or isinstance(part, str)
-            )
-        label      = config.get('label', '')
+        text = _extract_text_from_messages(messages)
+        label = config.get('label', '')
         model_path = config.get('model_path')
 
         if model_format == 'onnx':
-            # Delegate to SpecificModelRunner
             return self.onnx_runner.generate_command(text, label, model_path)
 
         elif model_format == 'gguf':
-            # Temporarily reconfigure AIEngine
             original_path = self.ai_engine.model_path
             try:
                 if model_path and os.path.exists(model_path):
                     self.ai_engine.model_path = model_path
-                    # Force reload if path changed
                     if getattr(self.ai_engine, 'llm', None):
-                        # Unload current
                         self.ai_engine.llm = None
                         gc.collect()
                 return self.ai_engine.generate_response(text)

@@ -41,7 +41,7 @@ class PluginManager:
                 )
                 continue
 
-            namespace_key = f"lemoe_plugin.{plugin_name}"
+            namespace_key = f"l3mcore_plugin.{plugin_name}"
             if namespace_key in sys.modules:
                 app_logger.warning(
                     f"Plugin '{plugin_name}' is already registered. Skipped duplicate."
@@ -118,3 +118,57 @@ class PluginManager:
                 except Exception as e:
                     app_logger.error(f"Error in plugin {plugin.__name__} (after_generation): {e}")
         return response
+
+    def reload_plugins(self):
+        """
+        Re-scans the plugins directory and loads any new .py files not already registered.
+        Already-loaded plugins are not reloaded to avoid state duplication.
+        """
+        plugin_dir = os.path.join(os.getcwd(), 'plugins')
+        if not os.path.exists(plugin_dir) or not os.path.isdir(plugin_dir):
+            app_logger.warning("reload_plugins: plugins directory not found.")
+            return
+
+        loaded_count = 0
+        for filename in sorted(os.listdir(plugin_dir)):
+            if not filename.endswith(".py") or filename.startswith("__"):
+                continue
+
+            plugin_name = filename[:-3]
+            if not _PLUGIN_NAME_RE.match(plugin_name):
+                continue
+
+            namespace_key = f"l3mcore_plugin.{plugin_name}"
+            if namespace_key in sys.modules:
+                continue  # already loaded
+
+            file_path = os.path.join(plugin_dir, filename)
+            try:
+                spec = importlib.util.spec_from_file_location(namespace_key, file_path)
+                if spec and spec.loader:
+                    module = importlib.util.module_from_spec(spec)
+                    sys.modules[namespace_key] = module
+                    spec.loader.exec_module(module)
+                    self._plugins.append(module)
+
+                    accepts_label = False
+                    if hasattr(module, 'after_generation'):
+                        try:
+                            import inspect
+                            sig = inspect.signature(module.after_generation)
+                            accepts_label = len(sig.parameters) >= 2
+                        except Exception:
+                            accepts_label = False
+                    self._plugin_accepts_label.append(accepts_label)
+
+                    app_logger.info(f"reload_plugins: loaded new plugin '{plugin_name}'.")
+                    loaded_count += 1
+            except Exception as e:
+                sys.modules.pop(namespace_key, None)
+                app_logger.error(f"reload_plugins: failed to load plugin '{plugin_name}': {e}")
+
+        if loaded_count == 0:
+            app_logger.info("reload_plugins: no new plugins found.")
+        else:
+            app_logger.info(f"reload_plugins: {loaded_count} new plugin(s) loaded.")
+

@@ -104,7 +104,21 @@ class SpecificModelRunner:
         try:
             if os.path.exists(self.stats_path):
                 with open(self.stats_path, 'r') as f:
-                    return json.load(f)
+                    raw = json.load(f)
+                if not isinstance(raw, dict):
+                    app_logger.warning("model_stats.json has unexpected format (not a dict). Resetting.")
+                    return {}
+                # Validate each entry: counters must be integers
+                validated = {}
+                for k, v in raw.items():
+                    if isinstance(v, int):
+                        validated[k] = v
+                    else:
+                        app_logger.warning(
+                            f"model_stats.json: counter for '{k}' is {type(v).__name__}, "
+                            "expected int. Discarding."
+                        )
+                return validated
         except Exception as e:
             app_logger.warning(f"Could not load model stats: {e}")
         return {}

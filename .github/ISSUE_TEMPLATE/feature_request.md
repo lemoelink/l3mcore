@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea or new feature for LEMoE
+about: Suggest an idea or new feature for l3mcore
 title: "[FEATURE] "
 labels: ["enhancement", "triage"]
 assignees: ''

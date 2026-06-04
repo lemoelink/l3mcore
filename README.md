@@ -1,35 +1,40 @@
-# L3mcore - Light Easy Mix Of Experts
-
-> By downloading this software you agree to the Polyform license terms / Al descargar este software aceptas los términos de la licencia PolyForm Noncommercial 1.0.0 [https://polyformproject.org/licenses/noncommercial/1.0.0]
-
+# l3mcore — Light Easy Mix Of Experts
 
 > [!WARNING]
 > **Fase de Desarrollo / In Development**
 > Este proyecto se encuentra actualmente en fase de desarrollo activo. Sin embargo, su funcionalidad principal (enrutamiento, carga de modelos y backends) es completamente operativa y estable para su uso.
-> 
+>
 > This project is currently under active development. However, its core functionality (routing, model loading, and backends) is fully operational and stable for use.
 
 A lightweight Mixture of Experts (MoE) system that acts as an intelligent router for AI requests. It exposes an API fully compatible with OpenAI and Ollama, classifies user input, and automatically dispatches it to the appropriate expert model.
+
+> Part of the **[lemoe.link](https://lemoe.link)** ecosystem.
 
 ### 👀 Watch it in action!
 https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 
 ## Table of Contents
 
-1. [Features](#features)
-2. [Quick Start](#quick-start)
-3. [Manual Installation](#manual-installation)
-4. [Configuration](#configuration)
-   - [Router (config.json)](#1-router-configjson)
-   - [Experts (experts.json)](#2-experts-expertsjson)
-   - [Expert Backends](#3-expert-backends)
-5. [Router Architecture](#router-architecture)
-   - [Hybrid Scoring System](#hybrid-scoring-system)
-   - [Scoring Weights](#scoring-weights-tuning)
-   - [Fallback Chain](#fallback-chain)
-6. [API Usage](#api-usage)
-7. [Security](#security)
-8. [Project Structure](#project-structure)
+- [l3mcore — Light Easy Mix Of Experts](#l3mcore--light-easy-mix-of-experts)
+    - [👀 Watch it in action!](#-watch-it-in-action)
+  - [Table of Contents](#table-of-contents)
+  - [Features](#features)
+  - [Quick Start](#quick-start)
+  - [Manual Installation](#manual-installation)
+  - [Docker Installation](#docker-installation)
+    - [Available Tags](#available-tags)
+    - [Docker Compose (with Open WebUI)](#docker-compose-with-open-webui)
+  - [Configuration](#configuration)
+    - [1. Router (config.json)](#1-router-configjson)
+    - [2. Experts (experts.json)](#2-experts-expertsjson)
+    - [3. Expert Backends](#3-expert-backends)
+  - [Router Architecture](#router-architecture)
+    - [Hybrid Scoring System](#hybrid-scoring-system)
+    - [Scoring Weights Tuning](#scoring-weights-tuning)
+    - [Fallback Chain](#fallback-chain)
+  - [API Usage](#api-usage)
+  - [Security](#security)
+  - [Project Structure](#project-structure)
 
 ---
 
@@ -44,11 +49,12 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
   - External APIs (OpenAI, Anthropic, Gemini, etc. via LiteLLM)
   - Local Ollama instances
   - Local ONNX or GGUF models (Llama.cpp)
-- **Cascading Contextual Routing**: Stateless conversation-aware routing. When a user message is ambiguous (e.g. "Make it shorter"), the router evaluates the last 2-3 user messages from the conversation history to maintain topic continuity. No database or session state required -- each request carries its own context via the standard OpenAI messages array. Configurable via `context_messages` and `context_max_chars` in `config.json`.
+- **Cascading Contextual Routing**: Stateless conversation-aware routing. When a user message is ambiguous (e.g. "Make it shorter"), the router evaluates the last 2-3 user messages from the conversation history to maintain topic continuity. No database or session state required — each request carries its own context via the standard OpenAI messages array. Configurable via `context_messages` and `context_max_chars` in `config.json`.
 - **Silent Self-Correction**: If any expert fails (timeout, API down, connection refused), the system automatically and silently redirects the request to the fallback model. The user receives a normal response without knowing an error occurred. Administrators can monitor failures via `[Auto-Correction]` log entries.
 - **Smart Memory Management**: Limits RAM usage for local models (maximum 3 simultaneous), with LRU eviction and TTL-based automatic unloading after 5 minutes of inactivity.
 - **Rate Limiting**: Built-in per-IP sliding-window rate limiter (60 req/min by default). Supports `X-Forwarded-For` for reverse proxy setups.
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
+- **Health Endpoint**: `GET /health` reports the live status of every core component (router mode, models in memory, plugins loaded, degraded state detection).
 - **Extensible Plugin System**: Customize pre- and post-processing steps or override routing rules using Python hooks (`override_route`, `before_routing`, `after_generation`). Official and community plugins are hosted at the [plugins repository](https://github.com/lemoelink/plugins), with new ones being released gradually.
 
 ---
@@ -58,8 +64,8 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 Requires Python 3.10 or higher.
 
 ```bash
-git clone https://github.com/lemoelink/LeMoE
-cd "LeMoE"
+git clone https://github.com/lemoelink/l3mcore.git
+cd l3mcore
 ```
 
 Run the setup script to check dependencies, select your router language, and download the embedding model. *(Note: This script will automatically create and activate an isolated Python virtual environment `venv` to install all requirements securely without breaking your system packages).*
@@ -91,28 +97,58 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 ## Docker Installation
 
-LEMoE is available on Docker Hub and can be run entirely via Docker, avoiding the need to install Python dependencies on your host.
+l3mcore is available on Docker Hub and can be run entirely via Docker, avoiding the need to install Python dependencies on your host.
 
 ```bash
-# Run the default Debian Slim image
+# Run the default image (Debian Slim, CPU)
 docker run -d -p 11435:11435 \
   -v ./config:/app/config \
   -v ./models:/app/models \
   -v ./data:/app/data \
-  --name lemoe \
-  lemoelink/lemoe:general
+  --name l3mcore \
+  lemoelink/l3mcore:latest
 ```
 
 ### Available Tags
 
-- `lemoelink/lemoe:general` (Default): Built on Debian Slim. Optimized for CPU inference. Smallest footprint with maximum compatibility.
-- `lemoelink/lemoe:debian`: Built on standard Debian. Identical to `general` but includes full OS libraries.
-- `lemoelink/lemoe:cuda`: (Beta) Built on Nvidia CUDA. Use this if you are running Llama.cpp models with GPU acceleration. Requires the `--gpus all` flag when running the container.
+| Tag | Base | Use case |
+|---|---|---|
+| `lemoelink/l3mcore:latest` | Debian Slim | Default. CPU inference, smallest footprint. |
+| `lemoelink/l3mcore:debian` | Debian Standard | Same as `latest` but with full OS libraries. |
+| `lemoelink/l3mcore:cuda` | Nvidia CUDA *(Beta)* | GPU acceleration (Nvidia). Requires `--gpus all`. |
+| `lemoelink/l3mcore:rocm` | AMD ROCm *(Beta)* | GPU acceleration (AMD). Requires mounting host DRI devices. |
+
+**GPU Acceleration details:**
+- **Nvidia CUDA**: Run with `--gpus all` (or specify individual GPUs).
+- **AMD ROCm**: Run with `--device=/dev/kfd --device=/dev/dri --group-add=video --cap-add=SYS_PTRACE --security-opt seccomp=unconfined`.
 
 **Volume Mounts:**
 - `/app/config`: Maps your `config.json` and `experts.json` so you can edit routing rules on the fly without rebuilding.
 - `/app/models`: Persists downloaded GGUF/ONNX models and HuggingFace caches across container restarts.
 - `/app/data`: Persists LRU/TTL runtime metrics.
+
+### Docker Compose (with Open WebUI)
+
+The easiest way to get a full stack (l3mcore + Open WebUI chat interface) running is via the interactive setup script:
+
+```bash
+bash private/docker/setup-docker.sh
+docker compose up -d
+```
+
+The script generates a `docker-compose.yml` with:
+- **`l3mcore`** service on port `11435`
+- **`open-webui`** service on port `3000`, pre-configured to talk to l3mcore
+
+Once running:
+- Open WebUI → `http://localhost:3000`
+- l3mcore API → `http://localhost:11435`
+
+To rebuild and push all images to Docker Hub:
+
+```bash
+bash private/publish_docker.sh
+```
 
 ---
 
@@ -132,6 +168,7 @@ The file `config/config.json` controls the routing engine.
         "model_path": "intfloat/multilingual-e5-small",
         "categories_file": "config/experts.json",
         "confidence_threshold": 0.4,
+        "confidence_threshold_keyword": 0.3,
         "keyword_fallback": true,
         "softmax_temperature": 0.15,
         "scoring_weights": {
@@ -140,6 +177,16 @@ The file `config/config.json` controls the routing engine.
             "mean_keyword": 0.20,
             "top3_vote":    0.10
         }
+    },
+    "ai_engine": {
+        "n_threads": 4,
+        "n_ctx": 2048,
+        "n_batch": 512
+    },
+    "expert_runner": {
+        "api_timeout": 60,
+        "ollama_timeout": 60,
+        "ollama_allowed_hosts": ["localhost", "127.0.0.1"]
     }
 }
 ```
@@ -150,12 +197,17 @@ The file `config/config.json` controls the routing engine.
 | `router_type` | string | `embedding` (SentenceTransformers) or `classification` (fine-tuned BERT). |
 | `model_path` | string | HuggingFace repo or local path to the router model. Empty string disables AI routing and uses keyword-only mode. |
 | `categories_file` | string | Path to `experts.json`. Must stay within the project directory. |
-| `confidence_threshold` | float | Minimum score (0-1) to accept a router prediction. Queries below this fall through to keyword fallback or return `null`. |
+| `confidence_threshold` | float | Minimum score (0-1) to accept a router ML prediction. |
+| `confidence_threshold_keyword` | float | Minimum score (0-1) for the keyword/fuzzy fallback tier. Defaults to `confidence_threshold` if not set. |
 | `keyword_fallback` | bool | Enable keyword + fuzzy matching as secondary routing method. |
 | `softmax_temperature` | float | Controls sharpness of softmax normalization. Lower = more decisive (try 0.10-0.20). |
 | `scoring_weights` | object | Hybrid scoring signal weights. See [Scoring Weights](#scoring-weights-tuning). |
-| `context_messages` | int | Number of recent user messages to concatenate for cascade routing when the last message alone has low confidence. Default: `3`. |
-| `context_max_chars` | int | Maximum characters for concatenated context text, to respect the embedding model token window. Default: `1600`. |
+| `context_messages` | int | Number of recent user messages to concatenate for cascade routing. Default: `3`. |
+| `context_max_chars` | int | Maximum characters for concatenated context text. Default: `1600`. |
+| `ai_engine.n_threads` | int | CPU threads for GGUF inference (llama.cpp). Default: `4`. |
+| `ai_engine.n_ctx` | int | Context window size for the GGUF model. Default: `2048`. |
+| `expert_runner.api_timeout` | int | Seconds before an external API call times out. Default: `60`. |
+| `expert_runner.ollama_allowed_hosts` | list | Hostnames allowed for Ollama endpoints. `localhost` and `127.0.0.1` always included. |
 
 **Recommended router models:**
 
@@ -309,7 +361,7 @@ Cascade Step 2: Evaluate last 2-3 user messages (concatenated)
     │ score < confidence_threshold
     ▼
 Keyword + Fuzzy matching (rapidfuzz)
-    │ score < threshold * 0.5
+    │ score < confidence_threshold_keyword
     ▼
 Fallback expert (ID 0)
 ```
@@ -347,13 +399,19 @@ curl http://localhost:11435/api/tags
 
 # Chat
 curl -X POST http://localhost:11435/api/chat \
-  -d '{"model": "lemoe", "messages": [{"role": "user", "content": "Hola"}]}'
+  -d '{"model": "l3mcore", "messages": [{"role": "user", "content": "Hola"}]}'
+```
+
+**Health check:**
+```bash
+curl http://localhost:11435/health
 ```
 
 **Available routes:**
 | Method | Path | Description |
 |---|---|---|
 | GET | `/` | Server info |
+| GET | `/health` | Live status of all core components |
 | GET | `/v1/models` | List models (OpenAI format) |
 | POST | `/v1/chat/completions` | Inference (OpenAI format, streaming supported) |
 | GET | `/api/tags` | List models (Ollama format) |
@@ -364,26 +422,27 @@ curl -X POST http://localhost:11435/api/chat \
 
 ## Security
 
-LEMoE includes hardened defaults for production-adjacent use:
+l3mcore includes hardened defaults for production-adjacent use:
 
 | Protection | Details |
 |---|---|
 | **Path Traversal** | Model paths and labels are canonicalized and confined to the `models/` directory. Labels containing `/`, `\`, or `..` are rejected. |
-| **SSRF Protection** | Ollama URLs are validated: only `http`/`https` schemes accepted. Cloud metadata endpoints (`169.254.0.0/16`) are blocked. Private/loopback IPs are allowed for internal deployments. |
+| **SSRF Protection** | Ollama URLs are validated: only `http`/`https` schemes accepted. Cloud metadata endpoints (`169.254.0.0/16`) are blocked. Hostname allowlist configurable via `ollama_allowed_hosts`. |
 | **Request Size Limit** | Incoming request bodies are capped at 1 MB (`MAX_CONTENT_LENGTH`). |
 | **Rate Limiting** | Sliding-window rate limiter: 60 requests per minute per IP. Respects `X-Forwarded-For` when behind a reverse proxy. Returns HTTP 429 when exceeded. |
 | **Log Sanitization** | User input is stripped of control characters and ANSI escape sequences before being written to log files. |
 | **Config Path Validation** | `categories_file` paths in `config.json` are resolved and must stay within the project directory. |
 | **Silent Error Isolation** | Internal exceptions from expert backends are never exposed to the end user. Error details are logged server-side only. The user receives a generic fallback response. |
 | **Atomic File Writes** | Model stats are written atomically (write to `.tmp`, then `os.replace()`) to prevent corruption on crash. |
+| **API Timeouts** | All external calls (LiteLLM, Ollama) have a configurable timeout (default 60 s) to prevent hung requests. |
+| **experts.json Validation** | Schema validation at startup: missing required fields per expert type are logged immediately, not at first request. |
 
 ---
-
 
 ## Project Structure
 
 ```
-LEMoE - Light Easy Mix Of Experts/
+l3mcore/
 ├── api_server.py          # Flask API server (OpenAI + Ollama compatible)
 ├── main.py                # CLI entry point (stdin loop)
 ├── setup.sh               # Interactive setup: Ollama check + model download
@@ -395,19 +454,24 @@ LEMoE - Light Easy Mix Of Experts/
 ├── models/                # Local ONNX or GGUF model directories
 ├── data/                  # Runtime data (model usage stats)
 ├── logs/                  # Application logs
-├── docker/                # Dockerfiles for various platforms
-│   ├── Dockerfile         # Default Debian Slim (CPU)
-│   ├── Dockerfile.debian  # Standard Debian (CPU)
-│   └── Dockerfile.cuda    # Nvidia CUDA (GPU)
+├── plugins/               # Plugin directory (Python hooks)
+├── private/
+│   └── docker/
+│       ├── Dockerfile         # Default Debian Slim (CPU)
+│       ├── Dockerfile.debian  # Standard Debian (CPU)
+│       ├── Dockerfile.cuda    # Nvidia CUDA (GPU)
+│       └── setup-docker.sh    # Interactive Docker Compose generator
 ├── tests/
-│   └── test_adversarial.py  # Adversarial test suite (42 tests)
+│   └── test_adversarial.py  # Adversarial test suite
 └── modules/
     ├── generic_router.py  # Hybrid embedding/classification router
     ├── decision_router.py # Fine-tuned classifier router (model mode)
     ├── router_factory.py  # Router selection factory
+    ├── utils_router.py    # Shared router utilities (clean_text, model loader)
     ├── expert_runner.py   # Expert dispatcher (API / Ollama / Local)
     ├── onnx_runner.py     # ONNX model runner with LRU + TTL memory management
     ├── ai_engine.py       # GGUF fallback engine (llama-cpp-python)
-    ├── config_manager.py  # JSON config loader
+    ├── config_manager.py  # JSON config loader (with disk-change detection)
+    ├── plugin_manager.py  # Plugin loader and hook dispatcher
     └── logger.py          # Shared application logger
 ```

@@ -1,5 +1,5 @@
 """
-LEMoE Router Factory
+l3mcore Router Factory
 
 Instantiates the correct router based on config.json -> router.mode:
 
@@ -26,5 +26,5 @@ def create_router(config_manager):
         return DecisionRouter(config_manager)
     else:
         from modules.generic_router import GenericRouter
-        app_logger.info("RouterFactory: 'generic' mode (GenericRouter + categories.jsonl)")
+        app_logger.info("RouterFactory: 'generic' mode (GenericRouter + experts.json)")
         return GenericRouter(config_manager)

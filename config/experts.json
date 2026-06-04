@@ -1,13 +1,13 @@
 {
-  "max_experts": 16,
+  "max_experts": 17,
   "experts": [
     {
       "id": 0,
       "label": "fallback",
       "description": "General fallback model used when the router cannot classify the request.",
-      "type": "local",
-      "format": "gguf",
-      "model_path": "models/Qwen3.5-0.8B-Q4_K_M.gguf"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen2.5:1.5b"
     },
     {
       "id": 1,
@@ -16,7 +16,7 @@
       "keywords": ["python", "django", "flask", "pandas", "script", "codigo", "bug", "decorador", "clase", "pip", "pytest", "asyncio", "numpy", "refactor", "excepcion"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "qwen2.5:7b"
+      "model_name": "qwen2.5-coder:1.5b"
     },
     {
       "id": 2,
@@ -25,36 +25,34 @@
       "keywords": ["html", "css", "javascript", "react", "vue", "frontend", "web", "navegador", "dom", "tailwind", "typescript", "componente", "ui", "ux", "responsive"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "qwen2.5:7b"
+      "model_name": "qwen2.5-coder:1.5b"
     },
     {
       "id": 3,
       "label": "experto_ciberseguridad",
       "description": "Analista de vulnerabilidades, pentesting y seguridad de redes.",
       "keywords": ["seguridad", "hack", "vulnerabilidad", "pentest", "firewall", "nmap", "cifrado", "malware", "phishing", "explotar", "cve", "auditoria", "red", "ataque", "proteccion"],
-      "type": "api",
-      "provider": "openai",
-      "model_name": "groq/llama-3.1-8b-instant",
-      "api_key_env": "GROQ_API_KEY"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:3b"
     },
     {
       "id": 4,
       "label": "traductor_universal",
       "description": "Especialista en traducción de textos entre múltiples idiomas.",
       "keywords": ["traducir", "idioma", "ingles", "frances", "aleman", "texto", "traduccion", "lenguaje", "diccionario", "significado", "palabra", "interpretar", "frase", "gramatica", "vocabulario"],
-      "type": "local",
-      "format": "onnx",
-      "model_path": "models/traductor-onnx"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen2.5:1.5b"
     },
     {
       "id": 5,
       "label": "creador_contenido",
       "description": "Redactor creativo para blogs, redes sociales y marketing.",
       "keywords": ["blog", "post", "twitter", "tweet", "marketing", "seo", "viral", "articulo", "redactar", "copywriting", "audiencia", "engagement", "hashtag", "publicidad", "campaña"],
-      "type": "api",
-      "provider": "openai",
-      "model_name": "groq/llama-3.1-8b-instant",
-      "api_key_env": "GROQ_API_KEY"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "qwen2.5:1.5b"
     },
     {
       "id": 6,
@@ -63,7 +61,7 @@
       "keywords": ["linux", "bash", "servidor", "ubuntu", "docker", "kubernetes", "ssh", "bashrc", "permisos", "nginx", "apache", "cron", "scripting", "terminal", "sysadmin"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.1:8b"
+      "model_name": "qwen2.5-coder:1.5b"
     },
     {
       "id": 7,
@@ -72,17 +70,16 @@
       "keywords": ["datos", "estadistica", "machine learning", "grafico", "visualizacion", "prediccion", "dataset", "entrenamiento", "modelo", "ia", "inteligencia artificial", "regresion", "clasificacion", "cluster", "analisis"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "mistral"
+      "model_name": "qwen2.5:1.5b"
     },
     {
       "id": 8,
       "label": "asesor_legal",
       "description": "Asistente para redacción de contratos y términos legales básicos.",
       "keywords": ["ley", "abogado", "contrato", "legal", "clausula", "derecho", "normativa", "demanda", "jurisprudencia", "firma", "condiciones", "privacidad", "gdpr", "terminos", "litigio"],
-      "type": "api",
-      "provider": "openai",
-      "model_name": "groq/llama-3.1-8b-instant",
-      "api_key_env": "GROQ_API_KEY"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:3b"
     },
     {
       "id": 9,
@@ -91,23 +88,22 @@
       "keywords": ["receta", "cocina", "ingrediente", "plato", "comida", "chef", "horno", "sarten", "hervir", "asar", "postre", "salado", "dulce", "nutricion", "dieta"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.1:8b"
+      "model_name": "llama3.2:1b"
     },
     {
       "id": 10,
       "label": "entrenador_personal",
       "description": "Especialista en rutinas de ejercicio y fitness.",
       "keywords": ["ejercicio", "rutina", "gimnasio", "musculo", "entrenamiento", "fitness", "pesas", "cardio", "fuerza", "resistencia", "abdominales", "flexiones", "correr", "estiramiento", "calentamiento"],
-      "type": "api",
-      "provider": "openai",
-      "model_name": "groq/llama-3.1-8b-instant",
-      "api_key_env": "GROQ_API_KEY"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:1b"
     },
     {
       "id": 11,
       "label": "malbec",
       "description": "Experto en generar comandos y configuraciones de Docker.",
-      "keywords": ["docker", "contenedor","apache","puerto", "dockerfile", "docker-compose", "imagen", "volumen", "puerto", "red", "build", "run", "orquestacion", "desplegar", "compose", "ps", "rm"],
+      "keywords": ["docker", "contenedor", "apache", "puerto", "dockerfile", "docker-compose", "imagen", "volumen", "puerto", "red", "build", "run", "orquestacion", "desplegar", "compose", "ps", "rm"],
       "type": "local",
       "format": "onnx",
       "model_path": "models/malbec"
@@ -117,9 +113,9 @@
       "label": "clasificador_sentimiento",
       "description": "Modelo rápido para detectar si un texto es positivo, negativo o neutral.",
       "keywords": ["sentimiento", "positivo", "negativo", "neutral", "emocion", "enfado", "feliz", "triste", "opinion", "review", "reseña", "critica", "evaluacion", "actitud", "tono"],
-      "type": "local",
-      "format": "onnx",
-      "model_path": "models/sentiment-onnx"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:1b"
     },
     {
       "id": 13,
@@ -128,26 +124,34 @@
       "keywords": ["sql", "base de datos", "query", "select", "join", "tabla", "mysql", "postgresql", "index", "relacional", "columna", "fila", "insert", "update", "delete"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "qwen2.5:7b"
+      "model_name": "qwen2.5-coder:1.5b"
     },
     {
       "id": 14,
       "label": "resumidor_textos",
       "description": "Genera resúmenes ejecutivos de textos largos.",
       "keywords": ["resumen", "resumir", "sintetizar", "corto", "breve", "idea principal", "puntos clave", "ejecutivo", "conclusion", "reducir", "parrafo", "texto", "lectura", "esquema", "sinopsis"],
-      "type": "local",
-      "format": "gguf",
-      "model_path": "models/gemma-2-2b-it-Q4_K_M.gguf"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:1b"
     },
     {
       "id": 15,
       "label": "asistente_viajes",
       "description": "Planificador de itinerarios y experto en turismo.",
       "keywords": ["viaje", "vuelo", "hotel", "turismo", "visitar", "itinerario", "vacaciones", "maleta", "pasaporte", "aeropuerto", "destino", "ciudad", "museo", "guia", "mapa"],
-      "type": "api",
-      "provider": "openai",
-      "model_name": "groq/llama-3.1-8b-instant",
-      "api_key_env": "GROQ_API_KEY"
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:1b"
+    },
+    {
+      "id": 16,
+      "label": "document-expert",
+      "description": "Experto en buscar y recuperar documentos del archivo personal de Paperless (facturas, contratos, nominas, acuerdos).",
+      "keywords": ["nomina", "contrato", "factura", "justificante", "recibo", "alquiler", "acuerdo", "pdf", "documento", "buscar", "recuperar", "ver", "archivo"],
+      "type": "ollama",
+      "url": "http://127.0.0.1:11434",
+      "model_name": "llama3.2:3b"
     }
   ]
 }

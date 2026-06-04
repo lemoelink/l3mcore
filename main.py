@@ -1,5 +1,5 @@
 """
-LEMoE - Light Easy Mix Of Experts
+l3mcore - Light Easy Mix Of Experts
 Main entry point: loads the classifier router and specialized ONNX models.
 """
 
@@ -24,7 +24,7 @@ def _safe_log(text: str, max_len: int = 120) -> str:
     return cleaned[:max_len] if len(cleaned) > max_len else cleaned
 
 
-class LEMoE:
+class l3mcore:
     """
     Main orchestrator of the MoE system.
     Flow: text input -> Router -> Label -> ExpertDispatcher -> Local Model / API / Ollama
@@ -32,7 +32,7 @@ class LEMoE:
     """
 
     def __init__(self):
-        app_logger.info("Starting LEMoE...")
+        app_logger.info("Starting l3mcore...")
 
         self.config = ConfigManager()
         self.router = create_router(self.config)
@@ -43,7 +43,7 @@ class LEMoE:
         self.ai_engine = AIEngine()
         self.dispatcher = ExpertDispatcher(self.runner, self.ai_engine)
 
-        app_logger.info("LEMoE ready.")
+        app_logger.info("l3mcore ready.")
 
     def process(self, text: str) -> str:
         """
@@ -80,7 +80,7 @@ class LEMoE:
         return result
 
     def shutdown(self):
-        app_logger.info("Shutting down LEMoE...")
+        app_logger.info("Shutting down l3mcore...")
         if hasattr(self.router, 'clear_cache'):
             self.router.clear_cache()
         app_logger.info("Shutdown complete.")
@@ -92,13 +92,13 @@ def _handle_signal(sig, frame, lemoe_instance):
 
 
 def main():
-    lemoe = LEMoE()
+    l3mcore = l3mcore()
 
     # Register clean shutdown signals
-    signal.signal(signal.SIGINT,  lambda s, f: _handle_signal(s, f, lemoe))
-    signal.signal(signal.SIGTERM, lambda s, f: _handle_signal(s, f, lemoe))
+    signal.signal(signal.SIGINT,  lambda s, f: _handle_signal(s, f, l3mcore))
+    signal.signal(signal.SIGTERM, lambda s, f: _handle_signal(s, f, l3mcore))
 
-    app_logger.info("LEMoE waiting for input. Send text via stdin or import LEMoE class.")
+    app_logger.info("l3mcore waiting for input. Send text via stdin or import l3mcore class.")
 
     # Stdin read loop (useful for manual testing or piping from another process)
     for line in sys.stdin:
@@ -108,10 +108,10 @@ def main():
         if line.lower() in ("exit", "quit"):
             break
         app_logger.info(f"stdin input: '{_safe_log(line)}'")
-        response = lemoe.process(line)
+        response = l3mcore.process(line)
         print(response, flush=True)
 
-    lemoe.shutdown()
+    l3mcore.shutdown()
 
 
 if __name__ == "__main__":

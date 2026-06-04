@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve LEMoE
+about: Create a report to help us improve l3mcore
 title: "[BUG] "
 labels: ["bug", "triage"]
 assignees: ''
@@ -29,7 +29,7 @@ If applicable, add screenshots or paste the terminal logs from `logs/app.log` to
  - OS: [e.g. Ubuntu 22.04, Windows 11]
  - Deployment: [e.g. Docker, Manual / Native]
  - Python Version: [e.g. 3.10.12]
- - LEMoE Version / Git Commit: [e.g. v0.1.0]
+ - l3mcore Version / Git Commit: [e.g. v0.1.0]
 
 **Additional context**
 Add any other context about the problem here (e.g., the models you are using in `experts.json`).

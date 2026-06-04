@@ -13,5 +13,8 @@
             "mean_keyword": 0.2,
             "top3_vote": 0.1
         }
+    },
+    "paperless": {
+        "use_semantic_router": true
     }
 }

@@ -1,8 +1,8 @@
 """
-LEMoE API Server
+l3mcore API Server
 
 OpenAI- and Ollama-compatible HTTP API. Any client that speaks either protocol
-can use LEMoE as a drop-in backend by pointing its base URL to this server.
+can use l3mcore as a drop-in backend by pointing its base URL to this server.
 
 Endpoints:
   GET  /                    -> Server info
@@ -41,7 +41,7 @@ from modules.plugin_manager import PluginManager
 # ---------------------------------------------------------------------------
 
 SERVER_VERSION = "0.1.0"
-DEFAULT_MODEL  = "lemoe"
+DEFAULT_MODEL  = "l3mcore"
 
 
 def _load_available_models(config_manager) -> list:
@@ -86,22 +86,44 @@ class _Core:
                     cls._instance = cls._init()
         return cls._instance
 
+    @classmethod
+    def reload_experts(cls):
+        instance = cls.get()
+        with cls._lock:
+            app_logger.info("l3mcore Core: Recargando configuraciones de expertos en el aire...")
+            try:
+                # 1. Recargar GenericRouter
+                router = instance.get("router")
+                if hasattr(router, "reload_categories"):
+                    router.reload_categories()
+                
+                # 2. Recargar modelos disponibles en api_server
+                config = instance.get("config")
+                available = _load_available_models(config)
+                
+                instance["available_models"] = available
+                instance["expert_models"] = [m for m in available if m != DEFAULT_MODEL]
+                
+                app_logger.info(f"l3mcore Core: Recarga automática finalizada. Modelos enrutables: {available}")
+            except Exception as e:
+                app_logger.error(f"l3mcore Core: Error durante la recarga en caliente: {e}")
+
     @staticmethod
     def _init():
-        app_logger.info("Initializing LEMoE Core...")
+        app_logger.info("Initializing l3mcore Core...")
         config = ConfigManager()
         router = create_router(config)
         runner = SpecificModelRunner(
             models_base_path="models",
             stats_path="data/model_stats.json"
         )
-        ai_engine = AIEngine()
-        dispatcher = ExpertDispatcher(runner, ai_engine)
+        ai_engine = AIEngine(config_manager=config)
+        dispatcher = ExpertDispatcher(runner, ai_engine, config_manager=config)
         plugin_mgr = PluginManager()
 
         available = _load_available_models(config)
         expert_models = [m for m in available if m != DEFAULT_MODEL]
-        app_logger.info(f"LEMoE Core ready. Models: {available}")
+        app_logger.info(f"l3mcore Core ready. Models: {available}")
         return {
             "config": config,
             "router": router,
@@ -324,7 +346,7 @@ def _openai_model_object(name: str) -> dict:
         "id": name,
         "object": "model",
         "created": 1700000000,
-        "owned_by": "lemoe",
+        "owned_by": "l3mcore",
     }
 
 
@@ -445,8 +467,8 @@ def ollama_tags():
             "details": {
                 "parent_model": "",
                 "format": "onnx" if name in expert_set else "mixed",
-                "family": "lemoe",
-                "families": ["lemoe"],
+                "family": "l3mcore",
+                "families": ["l3mcore"],
                 "parameter_size": "unknown",
                 "quantization_level": "Q4",
             }
@@ -524,21 +546,97 @@ def ollama_chat():
 @app.route("/", methods=["GET"])
 def root():
     return jsonify({
-        "name": "LEMoE",
+        "name": "l3mcore",
         "version": SERVER_VERSION,
         "description": "Light Easy Mix Of Experts – OpenAI & Ollama compatible API",
-        "endpoints": ["/v1/models", "/v1/chat/completions", "/api/tags", "/api/chat", "/api/version"],
+        "endpoints": ["/v1/models", "/v1/chat/completions", "/api/tags", "/api/chat", "/api/version", "/health"],
     })
+
+
+@app.route("/health", methods=["GET"])
+def health():
+    """Returns the operational status of every core component."""
+    core = _Core.get()
+    router = core["router"]
+    runner = core["runner"]
+    ai_engine = core["ai_engine"]
+    plugin_mgr = core["plugin_mgr"]
+    config = core["config"]
+
+    router_status = "ok"
+    router_mode = getattr(router, 'router_type', 'model')
+    router_enabled = getattr(router, 'enabled', False)
+    if not router_enabled:
+        router_status = "degraded (keyword fallback only)"
+
+    plugins_loaded = len(getattr(plugin_mgr, '_plugins', []))
+
+    ai_ready = getattr(ai_engine, 'is_ready', False)
+    models_in_memory = list(getattr(runner, 'sessions', {}).keys())
+
+    # Check if config.json has been modified since startup
+    config.check_for_changes()
+
+    status = {
+        "status": "ok",
+        "version": SERVER_VERSION,
+        "router": {
+            "mode": router_mode,
+            "status": router_status,
+            "cache_size": len(getattr(router, '_predict_cache', {})),
+        },
+        "onnx_runner": {
+            "models_in_memory": models_in_memory,
+            "max_models": getattr(runner, 'max_models', 3),
+        },
+        "ai_engine": {
+            "model": getattr(ai_engine, 'model_path', 'unknown'),
+            "loaded": ai_ready,
+        },
+        "plugins": {
+            "loaded": plugins_loaded,
+            "names": [
+                getattr(p, '__name__', '?').replace('l3mcore_plugin.', '')
+                for p in getattr(plugin_mgr, '_plugins', [])
+            ],
+        },
+        "available_models": core["available_models"],
+    }
+    return jsonify(status)
 
 
 # ---------------------------------------------------------------------------
 # WSGI entrypoint (Gunicorn / uWSGI) and dev entrypoint
 # ---------------------------------------------------------------------------
 
+def _start_experts_watcher():
+    """Starts the background thread to watch for changes in experts.json."""
+    def watch():
+        path = "config/experts.json"
+        last_mtime = os.path.getmtime(path) if os.path.exists(path) else 0
+        
+        while True:
+            time.sleep(2)
+            if os.path.exists(path):
+                try:
+                    current_mtime = os.path.getmtime(path)
+                    if current_mtime > last_mtime:
+                        last_mtime = current_mtime
+                        app_logger.info("Watcher: experts.json modification detected. Hot-reloading experts...")
+                        _Core.reload_experts()
+                except Exception as e:
+                    app_logger.error(f"Watcher error: {e}")
+
+    watcher_thread = threading.Thread(target=watch, daemon=True)
+    watcher_thread.start()
+    app_logger.info("Watcher: Started background thread for experts.json monitoring.")
+
+
 def _bootstrap():
     """Pre-load core + plugins once before the first request."""
     _Core.get()
     PluginManager()
+    _start_experts_watcher()
 
 
 # Gunicorn calls this module-level; bootstrap when the module is imported
@@ -550,13 +648,13 @@ def run(host: str = "0.0.0.0", port: int = 11435, debug: bool = False):
     Dev-only entrypoint (Flask built-in server).
     In production use Gunicorn: gunicorn -w 1 -b 0.0.0.0:11435 api_server:app
     """
-    app_logger.info(f"[DEV] LEMoE API listening on http://{host}:{port}")
+    app_logger.info(f"[DEV] l3mcore API listening on http://{host}:{port}")
     app.run(host=host, port=port, debug=debug, threaded=True)
 
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser(description="LEMoE API Server (dev mode)")
+    parser = argparse.ArgumentParser(description="l3mcore API Server (dev mode)")
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=11435)
     parser.add_argument("--debug", action="store_true")
