@@ -62,26 +62,39 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 
 ## Quick Start
 
-Requires Python 3.10 or higher.
+Requires Python 3.10 or higher. The easiest way to install and configure l3mcore is using our interactive auto-installer, which will download the repository, check dependencies, and set up the virtual environment in one step.
 
+**Using wget:**
 ```bash
-git clone https://github.com/lemoelink/l3mcore.git
-cd l3mcore
+wget -qO- https://raw.githubusercontent.com/lemoelink/LeMoE/master/setup.sh | bash
 ```
 
-Run the setup script to check dependencies, select your router language, and download the embedding model. *(Note: This script will automatically create and activate an isolated Python virtual environment `venv` to install all requirements securely without breaking your system packages).*
-
+**Using curl:**
 ```bash
-./setup.sh
+curl -sSL https://raw.githubusercontent.com/lemoelink/LeMoE/master/setup.sh | bash
 ```
 
-Then start the server:
+*(Note: The setup script will automatically create and activate an isolated Python virtual environment `venv` to install all requirements securely without breaking your system packages).*
+
+Once the setup finishes, start the server:
 
 ```bash
+cd LeMoE
 ./start.sh
 ```
 
 The server will be available at `http://0.0.0.0:11435`.
+
+### Classic Git Clone
+
+If you prefer to clone the repository manually:
+
+```bash
+git clone https://github.com/lemoelink/l3mcore.git
+cd l3mcore
+./setup.sh
+./start.sh
+```
 
 ---
 
