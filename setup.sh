@@ -11,14 +11,14 @@ if [ ! -f "api_server.py" ] && [ ! -d "modules" ]; then
         echo "Directory 'LeMoE' already exists. Please remove it or run setup from inside it."
         exit 1
     fi
-    git clone https://github.com/lemoelink/LeMoE.git
-    cd LeMoE
+    git clone https://github.com/lemoelink/l3mcore.git
+    cd L3mcore
 else
     # Check for updates if we are already inside the local repo
     if command -v git &> /dev/null && [ -d ".git" ]; then
         echo -e "\033[32m[L3MCOre] Checking for updates...\033[0m"
         CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
-        git fetch https://github.com/lemoelink/LeMoE.git "$CURRENT_BRANCH" -q 2>/dev/null || true
+        git fetch https://github.com/lemoelink/l3mcore.git "$CURRENT_BRANCH" -q 2>/dev/null || true
         if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
             echo -e "\033[33m"
             echo "==========================================================="
