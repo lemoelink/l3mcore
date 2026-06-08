@@ -3,22 +3,31 @@
 # Creates a virtualenv, installs dependencies, and downloads the router model.
 
 set -e
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
 
-# Check for updates
-if command -v git &> /dev/null && [ -d ".git" ]; then
-    echo -e "\033[32m[L3MCOre] Checking for updates...\033[0m"
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
-    git fetch https://github.com/lemoelink/LeMoE.git "$CURRENT_BRANCH" -q 2>/dev/null || true
-    if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
-        echo -e "\033[33m"
-        echo "==========================================================="
-        echo "A new L3MCOre update is available on branch $CURRENT_BRANCH!"
-        echo "To update, run the command:"
-        echo "  git pull"
-        echo "==========================================================="
-        echo -e "\033[0m"
+# Detect if piped from web or run locally
+if [ ! -f "api_server.py" ] && [ ! -d "modules" ]; then
+    echo -e "\033[32m[L3MCOre] Downloading and installing from GitHub...\033[0m"
+    if [ -d "LeMoE" ]; then
+        echo "Directory 'LeMoE' already exists. Please remove it or run setup from inside it."
+        exit 1
+    fi
+    git clone https://github.com/lemoelink/LeMoE.git
+    cd LeMoE
+else
+    # Check for updates if we are already inside the local repo
+    if command -v git &> /dev/null && [ -d ".git" ]; then
+        echo -e "\033[32m[L3MCOre] Checking for updates...\033[0m"
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
+        git fetch https://github.com/lemoelink/LeMoE.git "$CURRENT_BRANCH" -q 2>/dev/null || true
+        if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
+            echo -e "\033[33m"
+            echo "==========================================================="
+            echo "A new L3MCOre update is available on branch $CURRENT_BRANCH!"
+            echo "To update, run the command:"
+            echo "  git pull"
+            echo "==========================================================="
+            echo -e "\033[0m"
+        fi
     fi
 fi
 
@@ -77,7 +86,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu
 # Check Ollama
 if ! command -v ollama &> /dev/null; then
     echo "Ollama is not installed."
-    read -p "Install Ollama automatically? [y/N]: " install_ollama
+    read -p "Install Ollama automatically? [y/N]: " install_ollama < /dev/tty
     if [[ "$install_ollama" =~ ^[Yy]$ ]]; then
         echo "Installing Ollama..."
         curl -fsSL https://ollama.com/install.sh | sh
@@ -98,7 +107,7 @@ echo ""
 # Semantic router model configuration
 echo "Do you want to download and enable the semantic router model?"
 echo "If disabled, the system will use keyword matching exclusively."
-read -p "Enable semantic router? [Y/n]: " enable_router
+read -p "Enable semantic router? [Y/n]: " enable_router < /dev/tty
 
 # Default to Yes if empty or Y/y
 if [[ -z "$enable_router" || "$enable_router" =~ ^[Yy]$ ]]; then
@@ -113,7 +122,7 @@ echo ""
 
 # Plugin directory
 echo "Enable plugin system? (creates plugins/ directory)"
-read -p "Enable plugins? [y/N]: " enable_plugins
+read -p "Enable plugins? [y/N]: " enable_plugins < /dev/tty
 if [[ "$enable_plugins" =~ ^[Yy]$ ]]; then
     mkdir -p plugins
     echo "plugins/ directory created."
@@ -176,7 +185,7 @@ fi
 echo ""
 echo "Do you want to download the generic fallback model (Qwen3.5-0.8B-Q4_K_M.gguf)?"
 echo "If you choose no, you must configure your own fallback model (API, Ollama, etc.) in config/experts.json."
-read -p "Download fallback model? [y/N]: " dl_fallback
+read -p "Download fallback model? [y/N]: " dl_fallback < /dev/tty
 if [[ "$dl_fallback" =~ ^[Yy]$ ]]; then
     echo "Downloading Qwen3.5-0.8B-Q4_K_M.gguf (approx 500MB)..."
     mkdir -p models
@@ -195,7 +204,7 @@ fi
 if [[ "$enable_plugins" =~ ^[Yy]$ ]] && [ -f "plugins/paperless_search.py" ]; then
     echo ""
     echo "Do you want to download the custom BERT and DeBERTa models for the Paperless Search plugin?"
-    read -p "Download Paperless Search models? [y/N]: " dl_paperless
+    read -p "Download Paperless Search models? [y/N]: " dl_paperless < /dev/tty
     if [[ "$dl_paperless" =~ ^[Yy]$ ]]; then
         echo "Downloading custom BERT and DeBERTa models (this may take a few minutes)..."
         python3 - <<PYEOF

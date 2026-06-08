@@ -2,6 +2,16 @@
 
 A record of all major changes made to the project, referenced directly by commits.
 
+Commit [d82ea54](https://github.com/lemoelink/l3mcore/commit/d82ea54)
+- Enhanced `setup.sh` to support automated one-liner installations via `wget` and `curl` (auto-cloning and non-interactive `tty` prompting).
+- General codebase enrichment and API routing optimizations.
+
+Release [0.4.0 (Commit 733f7b3)](https://github.com/lemoelink/l3mcore/commit/733f7b3)
+- Extensive refactor of the `generic_router.py` and `expert_runner.py` modules.
+- Enhanced the `ai_engine.py` fallback architecture.
+- Added new routing utility tools (`utils_router.py`).
+- Updated project documentation (README) and issue templates.
+
 Commit [68e77ee](https://github.com/lemoelink/l3mcore/commit/68e77ee)
 - Integrated class-level threading locks for singletons to prevent race conditions during concurrent access.
 - Implemented atomic configuration saving with temporary files to avoid config file corruption.
