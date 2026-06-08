@@ -66,12 +66,12 @@ Requires Python 3.10 or higher. The easiest way to install and configure l3mcore
 
 **Using wget:**
 ```bash
-wget -qO- https://raw.githubusercontent.com/lemoelink/LeMoE/master/setup.sh | bash
+wget -qO- https://raw.githubusercontent.com/lemoelink/l3mcore/refs/heads/master/setup.sh | bash
 ```
 
 **Using curl:**
 ```bash
-curl -sSL https://raw.githubusercontent.com/lemoelink/LeMoE/master/setup.sh | bash
+curl -sSL https://raw.githubusercontent.com/lemoelink/l3mcore/refs/heads/master/setup.sh | bash
 ```
 
 *(Note: The setup script will automatically create and activate an isolated Python virtual environment `venv` to install all requirements securely without breaking your system packages).*
