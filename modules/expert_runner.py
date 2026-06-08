@@ -1,6 +1,7 @@
 import os
 import gc
 import json
+import time
 import ipaddress
 import urllib.request
 import urllib.error
@@ -103,6 +104,45 @@ def _extract_text_from_messages(messages) -> str:
     return " ".join(parts)
 
 
+_SYS_PROMPT_MAX = 4000  # characters — hard cap before injecting into messages
+
+
+def _inject_system_prompt(messages, expert_config: dict) -> list:
+    """
+    Prepends a system message from the expert's 'system_prompt' field.
+
+    Rules:
+    - Only acts when 'system_prompt' is a non-empty string in expert_config.
+    - Truncated to _SYS_PROMPT_MAX characters before use.
+    - If a system message already exists at index 0 it is left intact and the
+      expert prompt is prepended before it, so user-supplied system context
+      is never silently discarded.
+    - Returns a new list; the original messages list is never mutated.
+    """
+    raw = expert_config.get("system_prompt", "")
+    if not isinstance(raw, str) or not raw.strip():
+        return messages if isinstance(messages, list) else list(messages)
+
+    prompt = raw.strip()[:_SYS_PROMPT_MAX]
+    msgs = list(messages) if isinstance(messages, list) else []
+    system_msg = {"role": "system", "content": prompt}
+
+    if msgs and isinstance(msgs[0], dict) and msgs[0].get("role") == "system":
+        return [system_msg] + msgs
+    return [system_msg] + msgs
+
+
+def _notify_latency(expert_label: str, latency_ms: float) -> None:
+    """Pushes latency data to the telemetry plugin if loaded."""
+    try:
+        import sys
+        m = sys.modules.get("l3mcore_plugin.telemetry_dashboard")
+        if m and hasattr(m, "record_latency"):
+            m.record_latency(expert_label, latency_ms)
+    except Exception:
+        pass
+
+
 class ExpertDispatcher:
     """
     Routes inference to the correct backend based on the expert config dict.
@@ -125,15 +165,20 @@ class ExpertDispatcher:
 
     def run(self, messages, expert_config: dict) -> str:
         expert_type = expert_config.get('type', 'local').lower()
+        messages = _inject_system_prompt(messages, expert_config)
+        t0 = time.monotonic()
         try:
             if expert_type == 'api':
-                return self._run_api(messages, expert_config)
+                result = self._run_api(messages, expert_config)
             elif expert_type == 'ollama':
-                return self._run_ollama(messages, expert_config)
+                result = self._run_ollama(messages, expert_config)
             elif expert_type == 'local':
-                return self._run_local(messages, expert_config)
+                result = self._run_local(messages, expert_config)
             else:
                 raise ValueError(f"Unknown expert type: {expert_type}")
+            latency_ms = (time.monotonic() - t0) * 1000
+            _notify_latency(expert_config.get('label', 'unknown'), latency_ms)
+            return result
         except Exception as e:
             app_logger.error(f"Error executing expert '{expert_config.get('label')}': {e}")
             raise

@@ -55,8 +55,24 @@ class l3mcore:
         if not text or not text.strip():
             return ""
 
+        # Check security interceptor
+        try:
+            from modules.utils_text import sanitize
+            intercepted = sanitize(text)
+            if intercepted is not None:
+                return intercepted
+        except Exception as e:
+            app_logger.warning(f"Security interceptor failed: {e}")
+
+        import time
+        t0 = time.monotonic()
+
         label, score = self.router.predict(text)
         app_logger.info(f"Router: label='{label}' score={score:.3f}")
+
+        used_model = "fallback"
+        model_type = "local-gguf"
+        result = None
 
         if label and label != "null":
             try:
@@ -65,18 +81,33 @@ class l3mcore:
                     cfg = self.router.get_expert_config(label)
                     if cfg:
                         result = self.dispatcher.run(text, cfg)
-                        return result
+                        used_model = label
+                        model_type = cfg.get("type", "local")
+                        if model_type == "local":
+                            model_type = f"local-{cfg.get('format', 'onnx')}"
                 
-                # Fallback for pure ML router assuming local model
-                cfg = {"type": "local", "format": "onnx", "label": label}
-                result = self.dispatcher.run(text, cfg)
-                return result
+                if result is None:
+                    # Fallback for pure ML router assuming local model
+                    cfg = {"type": "local", "format": "onnx", "label": label}
+                    result = self.dispatcher.run(text, cfg)
+                    used_model = label
+                    model_type = "local-onnx"
             except Exception as e:
                 app_logger.error(f"Error in expert ({label}): {e}. Using GGUF fallback.")
 
-        # Fallback: general GGUF model
-        result = self.ai_engine.generate_response(text)
-        app_logger.info(f"AIEngine (GGUF) -> '{_safe_log(result)}'")
+        if result is None:
+            # Fallback: general GGUF model
+            result = self.ai_engine.generate_response(text)
+            app_logger.info(f"AIEngine (GGUF) -> '{_safe_log(result)}'")
+
+        # Record telemetry
+        duration = time.monotonic() - t0
+        try:
+            from modules.session_store import push_context
+            push_context(used_model, model_type, text, result, duration)
+        except Exception as e:
+            app_logger.warning(f"Telemetry tracking failed: {e}")
+
         return result
 
     def shutdown(self):

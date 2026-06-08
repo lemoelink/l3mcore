@@ -55,6 +55,7 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 - **Rate Limiting**: Built-in per-IP sliding-window rate limiter (60 req/min by default). Supports `X-Forwarded-For` for reverse proxy setups.
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
 - **Health Endpoint**: `GET /health` reports the live status of every core component (router mode, models in memory, plugins loaded, degraded state detection).
+- **Routing Diagnostic Endpoint**: `GET /v1/route?text=<prompt>` runs the router against any text and returns the full scoring breakdown — expert selected, confidence score, and top-5 ranked alternatives. No model is invoked; useful for configuration and debugging.
 - **Extensible Plugin System**: Customize pre- and post-processing steps or override routing rules using Python hooks (`override_route`, `before_routing`, `after_generation`). Official and community plugins are hosted at the [plugins repository](https://github.com/lemoelink/plugins), with new ones being released gradually.
 
 ---
@@ -165,7 +166,7 @@ The file `config/config.json` controls the routing engine.
     "router": {
         "mode": "generic",
         "router_type": "embedding",
-        "model_path": "intfloat/multilingual-e5-small",
+        "model_path": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         "categories_file": "config/experts.json",
         "confidence_threshold": 0.4,
         "confidence_threshold_keyword": 0.3,
@@ -209,12 +210,13 @@ The file `config/config.json` controls the routing engine.
 | `expert_runner.api_timeout` | int | Seconds before an external API call times out. Default: `60`. |
 | `expert_runner.ollama_allowed_hosts` | list | Hostnames allowed for Ollama endpoints. `localhost` and `127.0.0.1` always included. |
 
-**Recommended router models:**
+**Recommended router model:**
 
-| Language | Model |
-|---|---|
-| Spanish / Multilingual | `intfloat/multilingual-e5-small` |
-| English | `BAAI/bge-small-en-v1.5` |
+- **Multilingual (Default)**: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (excellent for Spanish, English, and other languages)
+
+#### Autonomous Keyword Enrichment
+
+L3MCOre includes a built-in semantic keyword enrichment system. On startup or configuration reloads, a background thread automatically uses the fallback LLM (or any active Ollama/API expert) to generate 20 relevant synonyms and query patterns for each category based on its name, description, and base keywords. The enriched keywords are cached locally in `config/.experts_enriched_cache.json` for zero-latency boots, automatically improving the semantic router's alignment without requiring the user to manually compile massive keyword lists.
 
 ---
 
@@ -414,6 +416,7 @@ curl http://localhost:11435/health
 | GET | `/health` | Live status of all core components |
 | GET | `/v1/models` | List models (OpenAI format) |
 | POST | `/v1/chat/completions` | Inference (OpenAI format, streaming supported) |
+| GET/POST | `/v1/route` | **Routing diagnostic** — scores a text against all experts without generating a response |
 | GET | `/api/tags` | List models (Ollama format) |
 | POST | `/api/chat` | Inference (Ollama format, streaming supported) |
 | GET | `/api/version` | Server version |

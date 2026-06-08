@@ -88,7 +88,8 @@
       "keywords": ["receta", "cocina", "ingrediente", "plato", "comida", "chef", "horno", "sarten", "hervir", "asar", "postre", "salado", "dulce", "nutricion", "dieta"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.2:1b"
+      "model_name": "llama3.2:1b",
+      "regex_triggers": ["^/receta", "cocinar para [0-9]+ personas"]
     },
     {
       "id": 10,

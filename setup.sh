@@ -8,13 +8,13 @@ cd "$SCRIPT_DIR"
 
 # Check for updates
 if command -v git &> /dev/null && [ -d ".git" ]; then
-    echo "[LEMoE] Checking for updates..."
+    echo -e "\033[32m[L3MCOre] Checking for updates...\033[0m"
     CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
     git fetch https://github.com/lemoelink/LeMoE.git "$CURRENT_BRANCH" -q 2>/dev/null || true
     if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
-        echo -e "\033[1;32m"
+        echo -e "\033[33m"
         echo "==========================================================="
-        echo "A new LEMoE update is available on branch $CURRENT_BRANCH!"
+        echo "A new L3MCOre update is available on branch $CURRENT_BRANCH!"
         echo "To update, run the command:"
         echo "  git pull"
         echo "==========================================================="
@@ -23,8 +23,8 @@ if command -v git &> /dev/null && [ -d ".git" ]; then
 fi
 
 
-echo "LEMoE Setup"
-echo "==========="
+echo "L3MCOre Setup"
+echo "============="
 echo ""
 
 # Check prerequisites
@@ -95,21 +95,18 @@ fi
 
 echo ""
 
-# Router language / embedding model
-echo "Select the primary language for the semantic router:"
-echo "  1) Spanish / Multilingual"
-echo "  2) English"
-read -p "Choice [1/2]: " lang_choice
+# Semantic router model configuration
+echo "Do you want to download and enable the semantic router model?"
+echo "If disabled, the system will use keyword matching exclusively."
+read -p "Enable semantic router? [Y/n]: " enable_router
 
-if [ "$lang_choice" = "1" ]; then
-    model_name="intfloat/multilingual-e5-small"
-    echo "Using multilingual model: $model_name"
-elif [ "$lang_choice" = "2" ]; then
-    model_name="BAAI/bge-small-en-v1.5"
-    echo "Using English model: $model_name"
+# Default to Yes if empty or Y/y
+if [[ -z "$enable_router" || "$enable_router" =~ ^[Yy]$ ]]; then
+    model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    echo "Using semantic router model: $model_name"
 else
-    echo "Invalid choice. Defaulting to multilingual (intfloat/multilingual-e5-small)."
-    model_name="intfloat/multilingual-e5-small"
+    model_name=""
+    echo "Semantic router model disabled."
 fi
 
 echo ""
@@ -156,10 +153,9 @@ except Exception as e:
     print(f'Error writing {config_file}: {e}')
 PYEOF
 
-echo ""
-echo "Downloading router model (this may take a moment)..."
-
-python3 - <<PYEOF
+if [ -n "$model_name" ]; then
+    echo "Downloading router model (this may take a moment)..."
+    python3 - <<PYEOF
 import sys
 try:
     from sentence_transformers import SentenceTransformer
@@ -173,6 +169,9 @@ except Exception as e:
     print(f'Error downloading model: {e}')
     sys.exit(1)
 PYEOF
+else
+    echo "Skipping router model download."
+fi
 
 echo ""
 echo "Do you want to download the generic fallback model (Qwen3.5-0.8B-Q4_K_M.gguf)?"
@@ -237,7 +236,7 @@ fi
 
 if [ $? -eq 0 ]; then
     echo ""
-    echo "Setup complete. Run ./start.sh to start LEMoE."
+    echo "Setup complete. Run ./start.sh to start L3MCOre."
 else
     echo ""
     echo "Setup failed during model download."

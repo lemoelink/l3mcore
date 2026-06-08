@@ -78,11 +78,13 @@ def _validate_expert_schema(entry: dict) -> list[str]:
         if not entry.get(field):
             errors.append(f"expert '{label}' (type={expert_type}) missing required field '{field}'")
 
-    keywords = entry.get("keywords", [])
-    if not isinstance(keywords, list):
-        errors.append(f"expert '{label}': 'keywords' must be a list")
-    elif len(keywords) < 5:
-        errors.append(f"expert '{label}': fewer than 5 keywords — routing quality will be poor")
+    # Bypass keyword validation for the fallback expert (typically label 'fallback' or id 0)
+    if label != "fallback" and entry.get("id") != 0:
+        keywords = entry.get("keywords", [])
+        if not isinstance(keywords, list):
+            errors.append(f"expert '{label}': 'keywords' must be a list")
+        elif len(keywords) < 5:
+            errors.append(f"expert '{label}': fewer than 5 keywords — routing quality will be poor")
 
     return errors
 
@@ -496,7 +498,17 @@ class GenericRouter:
 
     def reload_categories(self):
         with self._cache_lock:
-            app_logger.info("GenericRouter: Reloading categories from experts.json...")
+            app_logger.info("GenericRouter: Reloading categories and config...")
+            from modules.config_manager import ConfigManager
+            cfg = ConfigManager().get('router', {})
+            self.confidence_threshold = cfg.get('confidence_threshold', 0.4)
+            self.softmax_temperature = cfg.get('softmax_temperature', 0.15)
+            self.scoring_weights = cfg.get('scoring_weights', {
+                'max_keyword':  0.40,
+                'description':  0.30,
+                'mean_keyword': 0.20,
+                'top3_vote':    0.10,
+            })
             self.categories.clear()
             self.category_embeddings.clear()
             self._load_categories()

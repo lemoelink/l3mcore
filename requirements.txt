@@ -1,4 +1,4 @@
-# LEMoE - Light Easy Mix Of Experts
+# L3mcore - Light Easy Mix Of Experts
 # Dependencias Python necesarias
 
 # Servidor WSGI producción
