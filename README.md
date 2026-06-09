@@ -1,5 +1,10 @@
 # l3mcore — Light Easy Mix Of Experts
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V5E82133QQ)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
+[![Licencia](https://img.shields.io/github/license/lemoelink/l3mcore.svg)](https://github.com/lemoelink/l3mcore/blob/main/LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/lemoelink/l3mcore.svg)](https://github.com/lemoelink/l3mcore/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/lemoelink/l3mcore.svg?style=social)](https://github.com/lemoelink/l3mcore/stargazers)
 > [!WARNING]
 > **Fase de Desarrollo / In Development**
 > Este proyecto se encuentra actualmente en fase de desarrollo activo. Sin embargo, su funcionalidad principal (enrutamiento, carga de modelos y backends) es completamente operativa y estable para su uso.
