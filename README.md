@@ -1,5 +1,5 @@
 # l3mcore — Light Easy Mix Of Experts
-
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/V5E82133QQ)
 > [!WARNING]
 > **Fase de Desarrollo / In Development**
 > Este proyecto se encuentra actualmente en fase de desarrollo activo. Sin embargo, su funcionalidad principal (enrutamiento, carga de modelos y backends) es completamente operativa y estable para su uso.
