@@ -132,13 +132,13 @@ def _inject_system_prompt(messages, expert_config: dict) -> list:
     return [system_msg] + msgs
 
 
-def _notify_latency(expert_label: str, latency_ms: float) -> None:
-    """Pushes latency data to the telemetry plugin if loaded."""
+def _notify_telemetry(expert_label: str, latency_ms: float, prompt_tokens: int, completion_tokens: int, success: bool = True) -> None:
+    """Pushes detailed telemetry data to the telemetry plugin if loaded."""
     try:
         import sys
         m = sys.modules.get("l3mcore_plugin.telemetry_dashboard")
-        if m and hasattr(m, "record_latency"):
-            m.record_latency(expert_label, latency_ms)
+        if m and hasattr(m, "record_telemetry"):
+            m.record_telemetry(expert_label, latency_ms, prompt_tokens, completion_tokens, success)
     except Exception:
         pass
 
@@ -167,19 +167,29 @@ class ExpertDispatcher:
         expert_type = expert_config.get('type', 'local').lower()
         messages = _inject_system_prompt(messages, expert_config)
         t0 = time.monotonic()
+        prompt_tokens = 0
+        completion_tokens = 0
+        success = True
         try:
             if expert_type == 'api':
-                result = self._run_api(messages, expert_config)
+                result, prompt_tokens, completion_tokens = self._run_api(messages, expert_config)
             elif expert_type == 'ollama':
-                result = self._run_ollama(messages, expert_config)
+                result, prompt_tokens, completion_tokens = self._run_ollama(messages, expert_config)
             elif expert_type == 'local':
                 result = self._run_local(messages, expert_config)
+                # Estimar tokens para onnx local (no cuestan dinero)
+                prompt_tokens = int(len(_extract_text_from_messages(messages).split()) * 1.3)
+                completion_tokens = int(len(result.split()) * 1.3)
             else:
                 raise ValueError(f"Unknown expert type: {expert_type}")
+            
             latency_ms = (time.monotonic() - t0) * 1000
-            _notify_latency(expert_config.get('label', 'unknown'), latency_ms)
+            _notify_telemetry(expert_config.get('label', 'unknown'), latency_ms, prompt_tokens, completion_tokens, success=True)
             return result
         except Exception as e:
+            success = False
+            latency_ms = (time.monotonic() - t0) * 1000
+            _notify_telemetry(expert_config.get('label', 'unknown'), latency_ms, prompt_tokens, completion_tokens, success=False)
             app_logger.error(f"Error executing expert '{expert_config.get('label')}': {e}")
             raise
 
@@ -207,13 +217,52 @@ class ExpertDispatcher:
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
+        formatted_messages = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                formatted_messages.append(msg)
+                continue
+
+            new_msg = {
+                "role": msg.get("role"),
+            }
+
+            content = msg.get("content")
+            images = msg.get("images")
+
+            if isinstance(content, list):
+                new_msg["content"] = content
+                formatted_messages.append(new_msg)
+                continue
+
+            if isinstance(images, list) and images:
+                parts = []
+                if content:
+                    parts.append({"type": "text", "text": str(content)})
+                for img in images:
+                    if isinstance(img, str):
+                        if not img.startswith("data:image/"):
+                            img = f"data:image/png;base64,{img}"
+                        parts.append({
+                            "type": "image_url",
+                            "image_url": {"url": img}
+                        })
+                new_msg["content"] = parts
+            else:
+                new_msg["content"] = str(content) if content is not None else ""
+
+            formatted_messages.append(new_msg)
+
         response = litellm.completion(
             model=litellm_model,
-            messages=messages,
+            messages=formatted_messages,
             api_key=api_key,
             timeout=timeout,
         )
-        return response.choices[0].message.content.strip()
+        usage = response.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
+        return response.choices[0].message.content.strip(), prompt_tokens, completion_tokens
 
     def _run_ollama(self, messages, config: dict) -> str:
         raw_url = config.get('url', 'http://127.0.0.1:11434').rstrip('/')
@@ -230,7 +279,55 @@ class ExpertDispatcher:
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
 
-        data = {"model": model_name, "messages": messages, "stream": False}
+        formatted_messages = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                formatted_messages.append(msg)
+                continue
+
+            new_msg = {
+                "role": msg.get("role"),
+            }
+
+            content = msg.get("content")
+            images = msg.get("images") or []
+            if not isinstance(images, list):
+                images = [images]
+            else:
+                images = list(images)
+
+            clean_images = []
+            for img in images:
+                if isinstance(img, str):
+                    if img.startswith("data:image/") and ";base64," in img:
+                        img = img.split(";base64,", 1)[1]
+                    clean_images.append(img)
+
+            if isinstance(content, list):
+                text_parts = []
+                for part in content:
+                    if isinstance(part, dict):
+                        part_type = part.get("type")
+                        if part_type == "text":
+                            text_parts.append(part.get("text", ""))
+                        elif part_type == "image_url":
+                            img_url_dict = part.get("image_url")
+                            if isinstance(img_url_dict, dict):
+                                img_url = img_url_dict.get("url", "")
+                                if isinstance(img_url, str) and img_url.startswith("data:image/"):
+                                    if ";base64," in img_url:
+                                        raw_b64 = img_url.split(";base64,", 1)[1]
+                                        clean_images.append(raw_b64)
+                new_msg["content"] = "\n".join(text_parts)
+            else:
+                new_msg["content"] = str(content) if content is not None else ""
+
+            if clean_images:
+                new_msg["images"] = clean_images
+
+            formatted_messages.append(new_msg)
+
+        data = {"model": model_name, "messages": formatted_messages, "stream": False}
         req = urllib.request.Request(
             endpoint,
             data=json.dumps(data).encode('utf-8'),
@@ -239,7 +336,9 @@ class ExpertDispatcher:
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 result = json.loads(resp.read().decode('utf-8'))
-                return result.get('message', {}).get('content', '').strip()
+                prompt_tokens = result.get('prompt_eval_count', 0)
+                completion_tokens = result.get('eval_count', 0)
+                return result.get('message', {}).get('content', '').strip(), prompt_tokens, completion_tokens
         except urllib.error.URLError as e:
             raise RuntimeError(f"Error connecting to Ollama at {url}: {e}")
 

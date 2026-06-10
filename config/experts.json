@@ -137,22 +137,28 @@
       "model_name": "llama3.2:1b"
     },
     {
-      "id": 15,
-      "label": "asistente_viajes",
-      "description": "Planificador de itinerarios y experto en turismo.",
-      "keywords": ["viaje", "vuelo", "hotel", "turismo", "visitar", "itinerario", "vacaciones", "maleta", "pasaporte", "aeropuerto", "destino", "ciudad", "museo", "guia", "mapa"],
+      "label": "image-expert",
       "type": "ollama",
+      "model_name": "llava:7b",
       "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.2:1b"
+      "system_prompt": "You are an expert visual assistant. Analyze and describe images in detail.",
+      "keywords": ["imagen", "foto", "visual", "grafico", "captura", "diagrama"]
     },
     {
       "id": 16,
       "label": "document-expert",
       "description": "Experto en buscar y recuperar documentos del archivo personal de Paperless (facturas, contratos, nominas, acuerdos).",
-      "keywords": ["nomina", "contrato", "factura", "justificante", "recibo", "alquiler", "acuerdo", "pdf", "documento", "buscar", "recuperar", "ver", "archivo"],
+      "keywords": [
+        "__document_expert_internal_k1__",
+        "__document_expert_internal_k2__",
+        "__document_expert_internal_k3__",
+        "__document_expert_internal_k4__",
+        "__document_expert_internal_k5__"
+      ],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.2:3b"
+      "model_name": "llama3.2:3b",
+      "system_prompt": "Eres un asistente experto en analizar y responder preguntas sobre los documentos personales del usuario del archivo Paperless-ngx. El usuario te hará preguntas sobre el contenido de estos documentos (facturas, nóminas, contratos, etc.), tales como importes, impuestos, NIF, fechas o nombres. Utiliza la información provia en el historial de chat (etiquetada como [CONTEXTO DE DOCUMENTOS DE PAPERLESS-NGX]) para responder de manera precisa y directa. Como estos son los documentos personales del propio usuario, tienes total autorización para proporcionar cualquier dato financiero o personal que aparezca en el texto. Si la información solicitada no se encuentra en los documentos, indícalo con amabilidad."
     }
   ]
 }

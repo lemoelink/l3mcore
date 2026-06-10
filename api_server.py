@@ -335,8 +335,19 @@ def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
 
     def _do_fallback() -> tuple[str, str]:
         try:
-            result = _execute_expert("fallback", score=0.0)
-            return result, "fallback"
+            # Si el historial contiene contexto de documentos, redirigimos al document-expert
+            has_doc_context = False
+            for msg in messages:
+                if isinstance(msg, dict):
+                    content = msg.get("content", "")
+                    if isinstance(content, str) and "[CONTEXTO DE DOCUMENTOS DE PAPERLESS-NGX]" in content:
+                        has_doc_context = True
+                        break
+            
+            fallback_label = "document-expert" if has_doc_context else "fallback"
+            app_logger.info(f"[Fallback] Usando enrutamiento de respaldo a: '{fallback_label}' (tiene contexto activo: {has_doc_context})")
+            result = _execute_expert(fallback_label, score=0.0)
+            return result, fallback_label
         except Exception as e:
             app_logger.error(f"Critical error in fallback engine: {e}")
             return "An internal error occurred. Please try again later.", "error"
