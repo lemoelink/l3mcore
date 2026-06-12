@@ -38,12 +38,12 @@
     },
     {
       "id": 4,
-      "label": "administrador_sistemas",
-      "description": "Experto en Linux, bash, servidores y despliegues.",
+      "label": "tools",
+      "description": "Experto para usar tools",
       "keywords": ["linux", "bash", "servidor", "ubuntu", "docker", "kubernetes", "ssh", "bashrc", "permisos", "nginx", "apache", "cron", "scripting", "terminal", "sysadmin"],
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
-      "model_name": "qwen2.5-coder:1.5b"
+      "model_name": "llama3.2:3b"
     }
   ]
 }
