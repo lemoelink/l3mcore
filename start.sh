@@ -31,6 +31,10 @@ if command -v git &> /dev/null && [ -d ".git" ]; then
         echo "==========================================================="
         echo -e "\033[0m"
     fi
+    # Sync submodule plugins to the pinned commit in this repo
+    if [ -f ".gitmodules" ] && grep -q 'plugins' .gitmodules 2>/dev/null; then
+        git submodule update plugins -q 2>/dev/null || true
+    fi
 fi
 
 if [ ! -d "$VENV_DIR" ]; then
