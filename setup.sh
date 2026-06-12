@@ -132,6 +132,28 @@ if [[ -z "$dl_plugins" || "$dl_plugins" =~ ^[Yy]$ ]]; then
         git submodule deinit -f plugins 2>/dev/null || true
         git submodule update --init plugins 2>/dev/null || echo "Plugins skipped (remote sync issue). You can retry later with: git submodule update --init plugins"
     fi
+    # Patch: ensure license_manager exits silently when no license file is present
+    LM_FILE="plugins/license_manager_business.py"
+    if [ -f "$LM_FILE" ]; then
+        python3 - <<PYEOF
+import re, sys
+with open("$LM_FILE", "r", encoding="utf-8") as f:
+    src = f.read()
+old = """        if not os.path.exists(LICENSE_FILE):
+            if app_logger:
+                app_logger.warning(f\"license_manager: License file {LICENSE_FILE} not found.\")
+            self._handle_failure()
+            return"""
+new = """        if not os.path.exists(LICENSE_FILE):
+            # No license file present: standard open-source mode, exit silently.
+            return"""
+if old in src:
+    src = src.replace(old, new)
+    with open("$LM_FILE", "w", encoding="utf-8") as f:
+        f.write(src)
+    print("license_manager patched: silent mode when no license.")
+PYEOF
+    fi
 else
     echo "Plugins skipped."
 fi
