@@ -123,11 +123,11 @@ def _handle_signal(sig, frame, lemoe_instance):
 
 
 def main():
-    l3mcore = l3mcore()
+    core = l3mcore()
 
     # Register clean shutdown signals
-    signal.signal(signal.SIGINT,  lambda s, f: _handle_signal(s, f, l3mcore))
-    signal.signal(signal.SIGTERM, lambda s, f: _handle_signal(s, f, l3mcore))
+    signal.signal(signal.SIGINT,  lambda s, f: _handle_signal(s, f, core))
+    signal.signal(signal.SIGTERM, lambda s, f: _handle_signal(s, f, core))
 
     app_logger.info("l3mcore waiting for input. Send text via stdin or import l3mcore class.")
 
@@ -139,10 +139,10 @@ def main():
         if line.lower() in ("exit", "quit"):
             break
         app_logger.info(f"stdin input: '{_safe_log(line)}'")
-        response = l3mcore.process(line)
+        response = core.process(line)
         print(response, flush=True)
 
-    l3mcore.shutdown()
+    core.shutdown()
 
 
 if __name__ == "__main__":

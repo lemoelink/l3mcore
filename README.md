@@ -12,13 +12,13 @@ A lightweight Mixture of Experts (MoE) system that acts as an intelligent router
 
 > Part of the **[lemoe.link](https://lemoe.link)** ecosystem.
 
-### 👀 Watch it in action!
+###  Watch it in action!
 https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 
 ## Table of Contents
 
 - [l3mcore — Light Easy Mix Of Experts](#l3mcore--light-easy-mix-of-experts)
-    - [👀 Watch it in action!](#-watch-it-in-action)
+    - [ Watch it in action!](#-watch-it-in-action)
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
   - [Quick Start](#quick-start)
@@ -58,7 +58,9 @@ https://github.com/user-attachments/assets/e97e1481-a0a3-4f25-a3de-7ed25936e2b3
 - **Request Size Protection**: Incoming request bodies capped at 1 MB to prevent memory exhaustion.
 - **Health Endpoint**: `GET /health` reports the live status of every core component (router mode, models in memory, plugins loaded, degraded state detection).
 - **Routing Diagnostic Endpoint**: `GET /v1/route?text=<prompt>` runs the router against any text and returns the full scoring breakdown — expert selected, confidence score, and top-5 ranked alternatives. No model is invoked; useful for configuration and debugging.
-- **Extensible Plugin System**: Customize pre- and post-processing steps or override routing rules using Python hooks (`override_route`, `before_routing`, `after_generation`). Official and community plugins are hosted at the [plugins repository](https://github.com/lemoelink/plugins), with new ones being released gradually.
+- **Extensible Architecture (Plugins & Tools)**: 
+  - *Plugins*: Python modules in the `plugins/` directory that hook into the core lifecycle (`override_route`, `before_routing`, `after_generation`) to modify behavior seamlessly.
+  - *Tools*: Standalone Python scripts in the `tools/` directory that act as callable functions for models with tool-calling capabilities. Just drop a `.py` file in the folder and the `tools` expert will automatically register it.
 
 ---
 
@@ -321,9 +323,9 @@ The default `embedding` router builds three data structures per expert at startu
 
 ```
 Expert "programador"
-  ├── kw_vecs  : [embed("codigo"), embed("python"), embed("script"), ...]  ← one vector per keyword
-  ├── centroid : L2-normalised mean of all keyword vectors
-  └── desc_vec : embed("Expert in writing and reviewing code...")
+   kw_vecs  : [embed("codigo"), embed("python"), embed("script"), ...]  ← one vector per keyword
+   centroid : L2-normalised mean of all keyword vectors
+   desc_vec : embed("Expert in writing and reviewing code...")
 ```
 
 **At inference** (`_embed_score`):
@@ -369,17 +371,17 @@ Tuning guidelines:
 
 ```
 User query
-    │
-    ▼
+    
+    
 Cascade Step 1: Evaluate last user message
-    │ score < confidence_threshold
-    ▼
+     score < confidence_threshold
+    
 Cascade Step 2: Evaluate last 2-3 user messages (concatenated)
-    │ score < confidence_threshold
-    ▼
+     score < confidence_threshold
+    
 Keyword + Fuzzy matching (rapidfuzz)
-    │ score < confidence_threshold_keyword
-    ▼
+     score < confidence_threshold_keyword
+    
 Fallback expert (ID 0)
 ```
 
@@ -459,7 +461,7 @@ l3mcore includes hardened defaults for production-adjacent use:
 
 ## Project Structure
 
-```
+```text
 l3mcore/
 ├── api_server.py          # Flask API server (OpenAI + Ollama compatible)
 ├── main.py                # CLI entry point (stdin loop)
@@ -472,7 +474,8 @@ l3mcore/
 ├── models/                # Local ONNX or GGUF model directories
 ├── data/                  # Runtime data (model usage stats)
 ├── logs/                  # Application logs
-├── plugins/               # Plugin directory (Python hooks)
+├── plugins/               # Plugin directory (Python lifecycle hooks)
+├── tools/                 # Tool directory (Callable functions for LLMs)
 ├── private/
 │   └── docker/
 │       ├── Dockerfile         # Default Debian Slim (CPU)

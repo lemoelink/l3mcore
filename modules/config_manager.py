@@ -3,10 +3,37 @@ import os
 import threading
 import logging
 import time
+import base64
 
 logger = logging.getLogger("ConfigManager")
 
 _CONFIG_FILE = 'config/config.json'
+
+
+def _deobfuscate_value(val):
+    if isinstance(val, str):
+        if val.startswith("env:"):
+            env_var = val[4:]
+            return os.getenv(env_var, "")
+        elif val.startswith("base64:"):
+            try:
+                decoded = base64.b64decode(val[7:]).decode("utf-8")
+                return decoded
+            except Exception as e:
+                logger.error(f"Error decoding base64 value '{val}': {e}")
+                return val
+        elif val.startswith("obfuscated:"):
+            try:
+                decoded = base64.b64decode(val[11:]).decode("utf-8")
+                return decoded
+            except Exception as e:
+                logger.error(f"Error decoding obfuscated value '{val}': {e}")
+                return val
+    elif isinstance(val, dict):
+        return {k: _deobfuscate_value(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [_deobfuscate_value(v) for v in val]
+    return val
 
 
 class ConfigManager:
@@ -49,14 +76,15 @@ class ConfigManager:
             logger.error(f"Error saving configuration: {e}")
 
     def get(self, key, default=None):
-        return self._config.get(key, default)
+        val = self._config.get(key, default)
+        return _deobfuscate_value(val)
 
     def set(self, key, value):
         self._config[key] = value
         self.save()
 
     def get_all(self):
-        return self._config
+        return _deobfuscate_value(self._config)
 
     def check_for_changes(self):
         """Logs a warning if config.json on disk is newer than the loaded version."""

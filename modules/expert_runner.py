@@ -163,7 +163,14 @@ class ExpertDispatcher:
     def _runner_cfg(self) -> dict:
         return _get_runner_config(self._config_manager)
 
-    def run(self, messages, expert_config: dict) -> str:
+    def run(self, messages, expert_config: dict, tools: list | None = None) -> str | dict:
+        """
+        Runs inference for the given expert.
+        tools: optional list of OpenAI-format tool definitions.
+               Only passed to api/ollama experts; local models ignore it.
+        Returns a string response, or a dict with 'tool_calls' if the model
+        requests tool execution (only possible when tools is not None).
+        """
         expert_type = expert_config.get('type', 'local').lower()
         messages = _inject_system_prompt(messages, expert_config)
         t0 = time.monotonic()
@@ -172,17 +179,17 @@ class ExpertDispatcher:
         success = True
         try:
             if expert_type == 'api':
-                result, prompt_tokens, completion_tokens = self._run_api(messages, expert_config)
+                result, prompt_tokens, completion_tokens = self._run_api(messages, expert_config, tools=tools)
             elif expert_type == 'ollama':
-                result, prompt_tokens, completion_tokens = self._run_ollama(messages, expert_config)
+                result, prompt_tokens, completion_tokens = self._run_ollama(messages, expert_config, tools=tools)
             elif expert_type == 'local':
+                # Modelos locales no soportan tool calling; tools se ignora
                 result = self._run_local(messages, expert_config)
-                # Estimar tokens para onnx local (no cuestan dinero)
                 prompt_tokens = int(len(_extract_text_from_messages(messages).split()) * 1.3)
                 completion_tokens = int(len(result.split()) * 1.3)
             else:
                 raise ValueError(f"Unknown expert type: {expert_type}")
-            
+
             latency_ms = (time.monotonic() - t0) * 1000
             _notify_telemetry(expert_config.get('label', 'unknown'), latency_ms, prompt_tokens, completion_tokens, success=True)
             return result
@@ -193,7 +200,7 @@ class ExpertDispatcher:
             app_logger.error(f"Error executing expert '{expert_config.get('label')}': {e}")
             raise
 
-    def _run_api(self, messages, config: dict) -> str:
+    def _run_api(self, messages, config: dict, tools: list | None = None) -> tuple:
         if not LITELLM_AVAILABLE:
             raise ImportError("litellm required for 'api' type experts")
 
@@ -223,12 +230,22 @@ class ExpertDispatcher:
                 formatted_messages.append(msg)
                 continue
 
-            new_msg = {
-                "role": msg.get("role"),
-            }
-
+            new_msg = {"role": msg.get("role")}
             content = msg.get("content")
             images = msg.get("images")
+
+            # Pasar tool_call_id y tool_calls tal cual para mensajes de herramientas
+            if msg.get("role") == "tool":
+                new_msg["content"] = str(content) if content is not None else ""
+                if "tool_call_id" in msg:
+                    new_msg["tool_call_id"] = msg["tool_call_id"]
+                formatted_messages.append(new_msg)
+                continue
+            if msg.get("tool_calls"):
+                new_msg["tool_calls"] = msg["tool_calls"]
+                new_msg["content"] = content or ""
+                formatted_messages.append(new_msg)
+                continue
 
             if isinstance(content, list):
                 new_msg["content"] = content
@@ -243,28 +260,35 @@ class ExpertDispatcher:
                     if isinstance(img, str):
                         if not img.startswith("data:image/"):
                             img = f"data:image/png;base64,{img}"
-                        parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": img}
-                        })
+                        parts.append({"type": "image_url", "image_url": {"url": img}})
                 new_msg["content"] = parts
             else:
                 new_msg["content"] = str(content) if content is not None else ""
 
             formatted_messages.append(new_msg)
 
-        response = litellm.completion(
-            model=litellm_model,
-            messages=formatted_messages,
-            api_key=api_key,
-            timeout=timeout,
-        )
+        kwargs = {
+            "model": litellm_model,
+            "messages": formatted_messages,
+            "api_key": api_key,
+            "timeout": timeout,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        response = litellm.completion(**kwargs)
         usage = response.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
-        return response.choices[0].message.content.strip(), prompt_tokens, completion_tokens
 
-    def _run_ollama(self, messages, config: dict) -> str:
+        choice = response.choices[0]
+        # Si el modelo pide herramientas, devolver el dict de tool_calls
+        if getattr(choice, 'finish_reason', '') == 'tool_calls':
+            return {"tool_calls": choice.message.tool_calls}, prompt_tokens, completion_tokens
+
+        return choice.message.content.strip(), prompt_tokens, completion_tokens
+
+    def _run_ollama(self, messages, config: dict, tools: list | None = None) -> tuple:
         raw_url = config.get('url', 'http://127.0.0.1:11434').rstrip('/')
         model_name = config.get('model_name', 'llama3')
 
@@ -328,6 +352,9 @@ class ExpertDispatcher:
             formatted_messages.append(new_msg)
 
         data = {"model": model_name, "messages": formatted_messages, "stream": False}
+        if tools:
+            data["tools"] = tools
+
         req = urllib.request.Request(
             endpoint,
             data=json.dumps(data).encode('utf-8'),
@@ -338,7 +365,13 @@ class ExpertDispatcher:
                 result = json.loads(resp.read().decode('utf-8'))
                 prompt_tokens = result.get('prompt_eval_count', 0)
                 completion_tokens = result.get('eval_count', 0)
-                return result.get('message', {}).get('content', '').strip(), prompt_tokens, completion_tokens
+                message = result.get('message', {})
+
+                # Ollama devuelve tool_calls dentro de message si el modelo los solicita
+                if message.get('tool_calls'):
+                    return {"tool_calls": message['tool_calls']}, prompt_tokens, completion_tokens
+
+                return message.get('content', '').strip(), prompt_tokens, completion_tokens
         except urllib.error.URLError as e:
             raise RuntimeError(f"Error connecting to Ollama at {url}: {e}")
 

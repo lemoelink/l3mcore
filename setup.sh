@@ -121,13 +121,21 @@ fi
 echo ""
 
 # Plugin directory
-echo "Enable plugin system? (creates plugins/ directory)"
-read -p "Enable plugins? [y/N]: " enable_plugins < /dev/tty
-if [[ "$enable_plugins" =~ ^[Yy]$ ]]; then
-    mkdir -p plugins
-    echo "plugins/ directory created."
+echo "Inicializando sistema de plugins obligatorio..."
+git submodule update --init --recursive plugins
+echo "Sistema de plugins activado."
+
+echo ""
+
+# Tools directory
+echo "¿Deseas descargar el paquete oficial de Herramientas (Tools) de IA para dotar de habilidades extra a los agentes?"
+read -p "Download AI Tools from lemoelink/tools? [y/N]: " dl_tools < /dev/tty
+if [[ "$dl_tools" =~ ^[Yy]$ ]]; then
+    echo "Downloading tools..."
+    git submodule update --init --recursive tools
+    echo "Tools ready."
 else
-    echo "Plugins disabled."
+    echo "Tools skipped."
 fi
 
 echo ""
@@ -201,7 +209,7 @@ fi
 
 
 # Custom Paperless Search models
-if [[ "$enable_plugins" =~ ^[Yy]$ ]] && [ -f "plugins/paperless_search.py" ]; then
+if [ -f "tools/paperless_search.py" ] || [ -f "plugins/paperless_search.py" ]; then
     echo ""
     echo "Do you want to download the custom BERT and DeBERTa models for the Paperless Search plugin?"
     read -p "Download Paperless Search models? [y/N]: " dl_paperless < /dev/tty
@@ -212,7 +220,10 @@ import sys
 import os
 sys.path.insert(0, os.getcwd())
 try:
-    import plugins.paperless_search as p
+    try:
+        import tools.paperless_search as p
+    except ImportError:
+        import plugins.paperless_search as p
     p._is_testing = False
     print("Downloading BERT Classifier...")
     p._perform_update_for(

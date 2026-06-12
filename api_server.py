@@ -105,7 +105,7 @@ class _Core:
                 instance["expert_models"] = [m for m in available if m != DEFAULT_MODEL]
                 
                 app_logger.info(f"l3mcore Core: Recarga automática finalizada. Modelos enrutables: {available}")
-                _start_keyword_enrichment()
+                instance["plugin_mgr"].hook_on_startup(instance)
             except Exception as e:
                 app_logger.error(f"l3mcore Core: Error durante la recarga en caliente: {e}")
 
@@ -205,39 +205,76 @@ def _notify_transparency(label: str, score: float) -> None:
 
 def _fire_failure_webhook(failed_label: str, reason: str) -> None:
     """
-    Sends a POST notification to the webhook URL configured under
-    config.json > expert_runner.failure_webhook_url when an expert
-    fails and the system falls back automatically.
-
-    The payload is a small JSON object:
-      {"event": "expert_failure", "expert": "<label>", "reason": "<msg>"}
-
-    The call is fire-and-forget (best-effort): any error is logged and
-    swallowed so it never interrupts the fallback chain.
+    Delegates failure notification to plugins via hook_on_expert_failure.
     """
     try:
-        import urllib.request as _ur
-        import json as _json
         core = _Core.get()
-        cfg  = core["config"].get("expert_runner", {})
-        url  = cfg.get("failure_webhook_url", "")
-        if not url or not isinstance(url, str):
-            return
-        # Minimal scheme check — no SSRF protection needed here because
-        # the operator sets this value themselves in config.json.
-        url = url.strip()
-        if not url.startswith(("http://", "https://")):
-            return
-        payload = _json.dumps({
-            "event":  "expert_failure",
-            "expert": str(failed_label)[:64],
-            "reason": str(reason)[:256],
-        }).encode("utf-8")
-        req = _ur.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with _ur.urlopen(req, timeout=3):
-            pass
+        core["plugin_mgr"].hook_on_expert_failure(failed_label, reason)
     except Exception as exc:
-        app_logger.warning(f"[Webhook] Failed to notify failure for '{failed_label}': {exc}")
+        app_logger.warning(f"[Webhook] Failed to dispatch failure hook for '{failed_label}': {exc}")
+
+
+def _clean_assistant_response(text: str) -> str:
+    """
+    Cleans up the assistant's final response to remove raw JSON tool calls
+    (e.g., {"name": "...", "parameters": {...}}).
+    """
+    if not text:
+        return text
+
+    import json
+    i = 0
+    n = len(text)
+    ranges_to_remove = []
+    while i < n:
+        if text[i] == '{':
+            # Find the matching closing brace, tracking nested depth and strings
+            depth = 1
+            j = i + 1
+            in_string = False
+            escaped = False
+            while j < n and depth > 0:
+                char = text[j]
+                if escaped:
+                    escaped = False
+                elif char == '\\':
+                    escaped = True
+                elif char == '"':
+                    in_string = not in_string
+                elif not in_string:
+                    if char == '{':
+                        depth += 1
+                    elif char == '}':
+                        depth -= 1
+                j += 1
+            if depth == 0:
+                # We found a candidate JSON block from i to j
+                candidate = text[i:j]
+                try:
+                    obj = json.loads(candidate)
+                    if isinstance(obj, dict) and "name" in obj and ("parameters" in obj or "arguments" in obj or "parameter" in obj):
+                        # It is a tool call JSON block! Mark it for removal
+                        ranges_to_remove.append((i, j))
+                        i = j - 1
+                except Exception:
+                    pass
+        i += 1
+
+    # Remove the ranges from back to front
+    new_text = text
+    for start, end in reversed(ranges_to_remove):
+        # Clean any surrounding whitespace/newlines as well
+        prefix = new_text[:start]
+        suffix = new_text[end:]
+        prefix = prefix.rstrip()
+        suffix = suffix.lstrip()
+        # Keep a clean spacing between paragraphs if there was text before/after
+        if prefix and suffix:
+            new_text = prefix + "\n\n" + suffix
+        else:
+            new_text = prefix + suffix
+
+    return new_text.strip()
 
 
 def _run_inference(messages: list, model_hint: str) -> tuple[str, str]:
@@ -268,6 +305,7 @@ def _run_inference(messages: list, model_hint: str) -> tuple[str, str]:
 
     # 2. Run core inference
     res_text, used_lbl = _run_inference_impl(messages, model_hint)
+    res_text = _clean_assistant_response(res_text)
 
     # 3. Record telemetry
     duration = time.monotonic() - t0
@@ -315,10 +353,15 @@ def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
 
     routing_ctx = _extract_routing_context(messages, ctx_messages, ctx_chars)
 
-    override_label = plugin_mgr.hook_override_route(messages)
+    tc_cfg = config.get('tool_calling', {})
+    tc_enabled = tc_cfg.get('enabled', False)
+    override_label = None
+    if not tc_enabled:
+        override_label = plugin_mgr.hook_override_route(messages)
 
     last_text = plugin_mgr.hook_before_routing(routing_ctx["last_user_text"])
-    ctx_text  = plugin_mgr.hook_before_routing(routing_ctx["context_text"])
+    # Context text is left available for plugins like contextual_cascade
+    ctx_text  = routing_ctx["context_text"]
 
     def _execute_expert(label: str, score: float = 0.0) -> str:
         # Notify the routing_transparency plugin of the selected label+score
@@ -327,9 +370,11 @@ def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
         if hasattr(router, 'get_expert_config'):
             expert_config = router.get_expert_config(label)
             if expert_config:
+                plugin_mgr.hook_before_expert(messages, expert_config)
                 result = dispatcher.run(messages, expert_config)
                 return plugin_mgr.hook_after_generation(result, label)
         cfg = {"type": "local", "format": "onnx", "label": label}
+        plugin_mgr.hook_before_expert(messages, cfg)
         result = dispatcher.run(messages, cfg)
         return plugin_mgr.hook_after_generation(result, label)
 
@@ -343,7 +388,7 @@ def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
                     if isinstance(content, str) and "[CONTEXTO DE DOCUMENTOS DE PAPERLESS-NGX]" in content:
                         has_doc_context = True
                         break
-            
+
             fallback_label = "document-expert" if has_doc_context else "fallback"
             app_logger.info(f"[Fallback] Usando enrutamiento de respaldo a: '{fallback_label}' (tiene contexto activo: {has_doc_context})")
             result = _execute_expert(fallback_label, score=0.0)
@@ -352,7 +397,91 @@ def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
             app_logger.error(f"Critical error in fallback engine: {e}")
             return "An internal error occurred. Please try again later.", "error"
 
-    # Phase 0: Plugin forced route
+    # ---------------------------------------------------------------------------
+    # Phase 0: Tool Calling mode (si tool_calling.enabled = true en config.json)
+    # ---------------------------------------------------------------------------
+    tc_cfg = config.get('tool_calling', {})
+    if tc_cfg.get('enabled', False):
+        tc_label      = tc_cfg.get('expert_label', 'document-expert')
+        tc_max_iter   = int(tc_cfg.get('max_iterations', 5))
+        expert_config = router.get_expert_config(tc_label) if hasattr(router, 'get_expert_config') else None
+
+        if expert_config:
+            tools    = plugin_mgr.hook_get_tools()
+            tc_msgs  = list(messages)  # copia para no mutar el historial original
+
+            app_logger.info(
+                f"[ToolCalling] Modo activo. Experto: '{tc_label}', "
+                f"tools disponibles: {[t['function']['name'] for t in tools if isinstance(t, dict) and 'function' in t]}"
+            )
+
+            for iteration in range(tc_max_iter):
+                try:
+                    plugin_mgr.hook_before_expert(tc_msgs, expert_config)
+                    result = dispatcher.run(tc_msgs, expert_config, tools=tools if tools else None)
+                except Exception as e:
+                    app_logger.error(f"[ToolCalling] Error en iteracion {iteration+1}: {e}")
+                    break
+
+                # El modelo respondio con texto normal -> fin del bucle
+                if isinstance(result, str):
+                    final = plugin_mgr.hook_after_generation(result, tc_label)
+                    return final, tc_label
+
+                # El modelo respondio con tool_calls -> ejecutar y re-llamar
+                if isinstance(result, dict) and result.get('tool_calls'):
+                    raw_calls = result['tool_calls']
+
+                    # Añadir el mensaje del asistente con los tool_calls al historial
+                    tc_msgs.append({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": raw_calls
+                    })
+
+                    # Ejecutar cada herramienta y añadir su resultado
+                    for call in raw_calls:
+                        # Ollama y OpenAI tienen estructuras ligeramente distintas
+                        if isinstance(call, dict):
+                            call_id   = call.get('id', f'call_{iteration}')
+                            fn        = call.get('function', {})
+                            tool_name = fn.get('name', '')
+                            args_raw  = fn.get('arguments', '{}')
+                        else:
+                            # Objeto litellm con atributos
+                            call_id   = getattr(call, 'id', f'call_{iteration}')
+                            fn        = getattr(call, 'function', None)
+                            tool_name = getattr(fn, 'name', '') if fn else ''
+                            args_raw  = getattr(fn, 'arguments', '{}') if fn else '{}'
+
+                        try:
+                            arguments = json.loads(args_raw) if isinstance(args_raw, str) else args_raw
+                        except (json.JSONDecodeError, TypeError):
+                            arguments = {}
+
+                        app_logger.info(f"[ToolCalling] Ejecutando tool '{tool_name}' con args: {arguments}")
+                        tool_result = plugin_mgr.hook_execute_tool(tool_name, arguments)
+
+                        tc_msgs.append({
+                            "role": "tool",
+                            "tool_call_id": call_id,
+                            "content": tool_result
+                        })
+                    continue
+
+                # Respuesta inesperada
+                app_logger.warning(f"[ToolCalling] Respuesta inesperada en iteracion {iteration+1}: {type(result)}")
+                break
+
+            app_logger.warning("[ToolCalling] Se alcanzo max_iterations o fallo el bucle. Usando fallback.")
+            return _do_fallback()
+        else:
+            app_logger.warning(
+                f"[ToolCalling] Experto '{tc_label}' no encontrado en experts.json. "
+                "Desactivando tool calling para esta peticion."
+            )
+
+    # Phase 0b: Plugin forced route (comportamiento clasico)
     if override_label:
         try:
             app_logger.info(f"Plugin forced route to: {override_label}")
@@ -394,20 +523,18 @@ def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
             return _do_fallback()
     else:
         app_logger.info(f"[Cascade] Step 1: score {score:.2f} below threshold ({threshold}). Escalating to Step 2.")
-
-    # Phase 3: Cascade Step 2 - evaluate concatenated recent user messages
-    if ctx_text != last_text:
-        label, score = router.predict(ctx_text)
-        if label and label not in ('null', 'fallback') and score >= threshold:
-            app_logger.info(f"[Cascade] Step 2: '{ctx_text[:60]}' -> {label} ({score:.2f})")
+        
+        # Phase 3: Cascade Step 2 - evaluate context via plugin
+        target = plugin_mgr.hook_on_router_low_confidence(messages, label, score)
+        if target:
+            app_logger.info(f"[Cascade] Step 2 plugin overrode route to '{target}'")
             try:
-                result = _execute_expert(label, score=score)
-                return result, label
+                result = _execute_expert(target, score=1.0)
+                return result, target
             except Exception as e:
-                app_logger.error(f"[Auto-Correction] Routed expert '{label}' failed: {e}. Redirecting to fallback.")
+                app_logger.error(f"[Auto-Correction] Routed expert '{target}' failed: {e}. Redirecting to fallback.")
+                _fire_failure_webhook(target, str(e))
                 return _do_fallback()
-        else:
-            app_logger.info(f"[Cascade] Step 2: score {score:.2f} below threshold ({threshold}). Using fallback.")
 
     # Phase 4: Fallback
     app_logger.info("[Cascade] No expert matched. Using fallback.")
@@ -433,35 +560,12 @@ def set_security_headers(response):
 
 
 
-_rl_lock   = threading.Lock()
-_rl_counts: dict[str, list] = defaultdict(list)
-
-
-def _get_client_ip() -> str:
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.remote_addr or "unknown"
-
-
-def _rate_limit_check(max_requests: int = 100, window_seconds: int = 60) -> bool:
-    """Sliding-window rate limiter. Returns True if the request is allowed."""
-    ip  = _get_client_ip()
-    now = time.time()
-    with _rl_lock:
-        cutoff = now - window_seconds
-        _rl_counts[ip] = [t for t in _rl_counts[ip] if t > cutoff]
-        if len(_rl_counts[ip]) >= max_requests:
-            return False
-        _rl_counts[ip].append(now)
-
-        # Purge stale IPs to prevent unbounded memory growth
-        if len(_rl_counts) > 10000:
-            stale = [k for k, v in _rl_counts.items() if not v]
-            for k in stale:
-                del _rl_counts[k]
-
-        return True
+@app.before_request
+def call_plugin_before_request():
+    core = _Core.get()
+    if core and "plugin_mgr" in core:
+        return core["plugin_mgr"].hook_before_request(request)
+    return None
 
 
 _NON_PRINTABLE = re.compile(r'[\x00-\x1f\x7f]')
@@ -533,9 +637,6 @@ def list_models_openai():
 
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat_completions():
-    if not _rate_limit_check():
-        return jsonify({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}), 429
-
     body = request.get_json(force=True, silent=True) or {}
     messages    = body.get("messages") or []
     model_hint  = body.get("model", DEFAULT_MODEL)
@@ -616,9 +717,6 @@ def ollama_chat():
     Ollama POST /api/chat
     Body: { model, messages: [{role, content}], stream }
     """
-    if not _rate_limit_check():
-        return jsonify({"error": "Rate limit exceeded"}), 429
-
     body = request.get_json(force=True, silent=True) or {}
     messages   = body.get("messages") or []
     model_hint = body.get("model", DEFAULT_MODEL)
@@ -698,9 +796,6 @@ def route_inspect():
         "top_experts":  [{"expert": "...", "score": ...}, ...]
       }
     """
-    if not _rate_limit_check():
-        return jsonify({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}), 429
-
     # --- Extract input text -------------------------------------------------
     if request.method == "POST":
         body = request.get_json(force=True, silent=True) or {}
@@ -813,9 +908,6 @@ def discover_ollama():
     Query params:
       url  — Ollama base URL (default: http://127.0.0.1:11434)
     """
-    if not _rate_limit_check():
-        return jsonify({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}), 429
-
     import urllib.request as _ur
 
     raw_url = request.args.get("url", "http://127.0.0.1:11434").strip().rstrip("/")
@@ -942,9 +1034,6 @@ def health_experts():
     Checks the connectivity and status of all configured experts.
     Returns a JSON report showing which backends are active/reachable.
     """
-    if not _rate_limit_check():
-        return jsonify({"error": {"message": "Rate limit exceeded", "type": "rate_limit_error"}}), 429
-
     core = _Core.get()
     router_cfg_file = core["config"].get("router", {}).get("categories_file", "config/experts.json")
     
@@ -1031,196 +1120,7 @@ def health_experts():
     })
 
 
-_enrichment_active = False
-_enrichment_lock = threading.Lock()
-
-
-def _apply_enriched_keywords(router, enriched_map):
-    with router._cache_lock:
-        for label, new_words in enriched_map.items():
-            if label in router.categories:
-                config_keywords = [k.lower() for k in router.categories[label]['config'].get('keywords', [])]
-                combined = []
-                seen = set()
-                for k in config_keywords:
-                    if k not in seen:
-                        combined.append(k)
-                        seen.add(k)
-                for w in new_words:
-                    if w not in seen:
-                        combined.append(w)
-                        seen.add(w)
-                router.categories[label]['keywords'] = combined
-                router.categories[label]['kw_tokens'] = frozenset(w for kw in combined for w in kw.split())
-        
-        if router.enabled and router.router_type == 'embedding':
-            app_logger.info("[Keyword Enrichment] Recomputing semantic embeddings with enriched keywords...")
-            router._precompute_category_embeddings()
-        router._predict_cache.clear()
-
-
-def _start_keyword_enrichment():
-    """Starts background thread to semantically enrich keywords for experts using an active LLM."""
-    global _enrichment_active
-    
-    def enrich():
-        global _enrichment_active
-        with _enrichment_lock:
-            if _enrichment_active:
-                return
-            _enrichment_active = True
-            
-        try:
-            time.sleep(3)
-            app_logger.info("[Keyword Enrichment] Checking categories for semantic enrichment...")
-            
-            core = _Core.get()
-            router = core.get("router")
-            dispatcher = core.get("dispatcher")
-            
-            if not router or not hasattr(router, "categories"):
-                return
-            
-            if getattr(router, "router_type", "") != "embedding" or not getattr(router, "enabled", False):
-                app_logger.info("[Keyword Enrichment] Embedding router is disabled or not in embedding mode. Skipping.")
-                return
-                
-            exp_path = "config/experts.json"
-            if not os.path.exists(exp_path):
-                return
-                
-            try:
-                with open(exp_path, encoding='utf-8') as f:
-                    data = json.load(f)
-                experts = data.get('experts', [])
-            except Exception as e:
-                app_logger.error(f"[Keyword Enrichment] Error loading experts.json: {e}")
-                return
-                
-            import hashlib
-            norm_list = []
-            for exp in experts:
-                norm_list.append({
-                    "label": exp.get("label", ""),
-                    "description": exp.get("description", ""),
-                    "keywords": sorted(exp.get("keywords", []))
-                })
-            experts_str = json.dumps(norm_list, sort_keys=True)
-            current_hash = hashlib.sha256(experts_str.encode('utf-8')).hexdigest()
-            
-            cache_path = "config/.experts_enriched_cache.json"
-            cache_data = {}
-            if os.path.exists(cache_path):
-                try:
-                    with open(cache_path, encoding='utf-8') as f:
-                        cache_data = json.load(f)
-                except Exception:
-                    pass
-                    
-            if cache_data.get("hash") == current_hash:
-                app_logger.info("[Keyword Enrichment] Enriched keywords cache is up-to-date. Applying from cache...")
-                enriched_map = cache_data.get("enriched", {})
-                if enriched_map:
-                    _apply_enriched_keywords(router, enriched_map)
-                return
-                
-            gen_expert = None
-            for exp in experts:
-                if exp.get("label") == "fallback":
-                    if exp.get("type") == "local" and exp.get("format") == "gguf":
-                        model_file = exp.get("model_path", "")
-                        if not model_file or not os.path.exists(model_file):
-                            continue
-                    gen_expert = exp
-                    break
-                    
-            if not gen_expert:
-                for exp in experts:
-                    if exp.get("type") in ["ollama", "api"]:
-                        gen_expert = exp
-                        break
-                        
-            if not gen_expert:
-                for exp in experts:
-                    if exp.get("type") == "local":
-                        gen_expert = exp
-                        break
-                        
-            if not gen_expert:
-                app_logger.warning("[Keyword Enrichment] No LLM expert available to generate semantic keywords.")
-                return
-                
-            app_logger.info(f"[Keyword Enrichment] Using expert '{gen_expert.get('label')}' for keyword generation...")
-            
-            enriched_map = {}
-            for exp in experts:
-                label = exp.get("label")
-                if not label or label == "fallback":
-                    continue
-                    
-                keywords = exp.get("keywords", [])
-                description = exp.get("description", "")
-                
-                prompt = (
-                    f"You are an assistant for a Mixture of Experts router.\n"
-                    f"Category Name: {label}\n"
-                    f"Description: {description}\n"
-                    f"Existing Keywords: {', '.join(keywords)}\n\n"
-                    f"Generate a list of 20 additional relevant keywords, search terms, synonyms, or short phrasing patterns (2-3 words max) in Spanish and English that users would use when asking about this category.\n"
-                    f"Format each keyword or phrase naturally with spaces between words (e.g., use 'computer science' instead of 'computerscience', or 'react developer' instead of 'reactdeveloper'). Do not create long concatenated compound words.\n"
-                    f"Output ONLY the keywords as a comma-separated list. Do not include numbering, explanations, colons, headers, markdown formatting, or introductory text. Just the comma-separated words."
-                )
-                
-                messages = [{"role": "user", "content": prompt}]
-                try:
-                    app_logger.info(f"[Keyword Enrichment] Generating semantic synonyms for '{label}'...")
-                    response = dispatcher.run(messages, gen_expert)
-                    raw_parts = []
-                    for line in response.split('\n'):
-                        for part in line.split(','):
-                            part_mod = part.replace('/', ' ').replace('\\', ' ')
-                            raw_parts.append(part_mod)
-                    
-                    new_words = []
-                    seen_words = set()
-                    for part in raw_parts:
-                        part_clean = part.strip()
-                        part_clean = re.sub(r'^\d+[\.\)\s]+', '', part_clean)
-                        part_clean = re.sub(r'^[\-\*\•\+]\s*', '', part_clean)
-                        part_clean = part_clean.strip().strip('"').strip("'").strip(".").strip("-").strip("*").strip()
-                        
-                        if part_clean and len(part_clean) > 1 and len(part_clean) < 45 and ":" not in part_clean:
-                            if len(part_clean) > 16 and " " not in part_clean:
-                                continue  # Skip concatenated compound words
-                            w_lower = part_clean.lower()
-                            if w_lower not in seen_words:
-                                if not any(stop in w_lower for stop in ["here is", "here are", "sure", "additional", "keywords:", "list of", "spanish", "english"]):
-                                    new_words.append(w_lower)
-                                    seen_words.add(w_lower)
-                    if new_words:
-                        enriched_map[label] = new_words
-                        app_logger.info(f"[Keyword Enrichment] Generated {len(new_words)} enriched keywords for '{label}': {new_words[:5]}...")
-                except Exception as e:
-                    app_logger.error(f"[Keyword Enrichment] Error generating synonyms for '{label}': {e}")
-                    return
-                    
-            try:
-                with open(cache_path, "w", encoding='utf-8') as f:
-                    json.dump({
-                        "hash": current_hash,
-                        "enriched": enriched_map
-                    }, f, indent=4, ensure_ascii=False)
-                app_logger.info("[Keyword Enrichment] Enriched keywords cached successfully.")
-                _apply_enriched_keywords(router, enriched_map)
-            except Exception as e:
-                app_logger.error(f"[Keyword Enrichment] Error saving enrichment cache: {e}")
-                
-        finally:
-            with _enrichment_lock:
-                _enrichment_active = False
-
-
-    threading.Thread(target=enrich, daemon=True).start()
+# Keyword enrichment has been moved to a plugin.
 
 
 # ---------------------------------------------------------------------------
@@ -1265,10 +1165,10 @@ def _start_experts_watcher():
 
 def _bootstrap():
     """Pre-load core + plugins once before the first request."""
-    _Core.get()
+    core = _Core.get()
     PluginManager()
     _start_experts_watcher()
-    _start_keyword_enrichment()
+    core["plugin_mgr"].hook_on_startup(core)
 
 
 # Gunicorn calls this module-level; bootstrap when the module is imported

@@ -15,11 +15,11 @@ __pycache__/
 *.pycache
 .pytest_cache/
 
-# Documentos privados / confidenciales
+
 private/
 
-# Plugins (no forman parte del núcleo público)
-plugins/
+# Plugins (ahora es submódulo)
+# plugins/
 
 # Web / landing page (se despliega por separado en Cloudflare)
 web/
@@ -36,7 +36,8 @@ docker/
 *.pt
 *.pth
 models/*/
-
+config/license.asc
+config/.license_grace
 # Datos generados en runtime
 data/
 logs/

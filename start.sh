@@ -33,7 +33,6 @@ if command -v git &> /dev/null && [ -d ".git" ]; then
     fi
 fi
 
-
 if [ ! -d "$VENV_DIR" ]; then
     echo -e "\033[32m[L3MCOre] Creating virtual environment...\033[0m"
     python3 -m venv "$VENV_DIR"
@@ -47,6 +46,11 @@ fi
 
 echo -e "\033[32m[L3MCOre] Activating virtual environment: $VENV_DIR\033[0m"
 source "$VENV_DIR/bin/activate"
+
+# Ejecutar sincronización de módulos extendidos si procede
+if [ -f "$SCRIPT_DIR/sync_modules.py" ]; then
+    python "$SCRIPT_DIR/sync_modules.py"
+fi
 
 echo -e "\033[32m[L3MCOre] Starting API server on http://${HOST}:${PORT}\033[0m"
 echo -e "\033[32m[L3MCOre] OpenAI-compatible endpoint: http://${HOST}:${PORT}/v1\033[0m"

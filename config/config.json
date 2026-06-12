@@ -1,4 +1,7 @@
 {
+    "updater": {
+        "channel": "release"
+    },
     "router": {
         "mode": "generic",
         "router_type": "embedding",
@@ -16,5 +19,10 @@
     },
     "paperless": {
         "use_semantic_router": true
+    },
+    "tool_calling": {
+        "enabled": true,
+        "expert_label": "tools",
+        "max_iterations": 5
     }
 }
