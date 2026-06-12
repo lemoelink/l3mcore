@@ -1,6 +1,6 @@
-[submodule "plugins"]
-	path = plugins
-	url = https://github.com/lemoelink/plugins.git
 [submodule "tools"]
 	path = tools
 	url = https://github.com/lemoelink/tools.git
+[submodule "plugins"]
+	path = plugins
+	url = https://github.com/lemoelink/plugins.git

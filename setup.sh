@@ -121,9 +121,20 @@ fi
 echo ""
 
 # Plugin directory
-echo "Inicializando sistema de plugins obligatorio..."
-git submodule update --init --recursive plugins
-echo "Sistema de plugins activado."
+echo "Would you like to download the official plugin package? (recommended)"
+read -p "Download plugins from lemoelink/plugins? [Y/n]: " dl_plugins < /dev/tty
+if [[ -z "$dl_plugins" || "$dl_plugins" =~ ^[Yy]$ ]]; then
+    echo "Downloading plugins..."
+    if git submodule update --init --recursive plugins 2>/dev/null; then
+        echo "Plugins ready."
+    else
+        echo "Warning: Could not sync plugins submodule. Trying a clean init..."
+        git submodule deinit -f plugins 2>/dev/null || true
+        git submodule update --init plugins 2>/dev/null || echo "Plugins skipped (remote sync issue). You can retry later with: git submodule update --init plugins"
+    fi
+else
+    echo "Plugins skipped."
+fi
 
 echo ""
 
