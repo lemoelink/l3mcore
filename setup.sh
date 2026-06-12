@@ -132,11 +132,11 @@ if [[ -z "$dl_plugins" || "$dl_plugins" =~ ^[Yy]$ ]]; then
         git submodule deinit -f plugins 2>/dev/null || true
         git submodule update --init plugins 2>/dev/null || echo "Plugins skipped (remote sync issue). You can retry later with: git submodule update --init plugins"
     fi
-    # Patch: ensure license_manager exits silently when no license file is present
+    # Patch: ensure license_manager only activates business logic when a license
+    # has been present at some point (silent for clean open-source installs).
     LM_FILE="plugins/license_manager_business.py"
     if [ -f "$LM_FILE" ]; then
         python3 - <<PYEOF
-import re, sys
 with open("$LM_FILE", "r", encoding="utf-8") as f:
     src = f.read()
 old = """        if not os.path.exists(LICENSE_FILE):
@@ -144,14 +144,24 @@ old = """        if not os.path.exists(LICENSE_FILE):
                 app_logger.warning(f\"license_manager: License file {LICENSE_FILE} not found.\")
             self._handle_failure()
             return"""
-new = """        if not os.path.exists(LICENSE_FILE):
-            # No license file present: standard open-source mode, exit silently.
+new = """        license_exists = os.path.exists(LICENSE_FILE)
+        grace_exists   = os.path.exists(GRACE_FILE)
+
+        if not license_exists and not grace_exists:
+            # This installation has never had a license. Standard open-source mode.
+            # Exit silently without logging anything.
+            return
+
+        if not license_exists and grace_exists:
+            # The license file was removed after being present before.
+            # Honour the grace period that was already started.
+            self._handle_failure()
             return"""
 if old in src:
     src = src.replace(old, new)
     with open("$LM_FILE", "w", encoding="utf-8") as f:
         f.write(src)
-    print("license_manager patched: silent mode when no license.")
+    print("license_manager patched: business logic only activates when a license has been present.")
 PYEOF
     fi
 else
