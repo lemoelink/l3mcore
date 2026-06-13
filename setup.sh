@@ -134,7 +134,7 @@ if [[ -z "$dl_plugins" || "$dl_plugins" =~ ^[Yy]$ ]]; then
     fi
     # Patch: ensure license_manager only activates business logic when a license
     # has been present at some point (silent for clean open-source installs).
-    LM_FILE="plugins/license_manager_business.py"
+    LM_FILE="plugins/license_manager.py"
     if [ -f "$LM_FILE" ]; then
         python3 - <<PYEOF
 with open("$LM_FILE", "r", encoding="utf-8") as f:

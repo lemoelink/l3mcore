@@ -23,7 +23,7 @@ llama-cpp-python>=0.2.0
 # --- Plugins opcionales ---
 # Instalar solo los plugins que se vayan a usar
 
-# plugin: license_manager_business (Licencias GPG)
+# plugin: license_manager (Licencias GPG)
 pgpy>=0.6.0
 # requests>=2.31.0 # (ya incluido abajo)
 
