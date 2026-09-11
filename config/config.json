@@ -1,7 +1,4 @@
 {
-    "updater": {
-        "channel": "release"
-    },
     "router": {
         "mode": "generic",
         "router_type": "embedding",
@@ -29,42 +26,5 @@
     "cors": {
         "enabled": false,
         "origin": "http://localhost"
-    },
-    "paperless": {
-        "use_semantic_router": true
-    },
-    "tool_calling": {
-        "enabled": true,
-        "expert_label": "tools",
-        "max_iterations": 5
-    },
-    "web_search": {
-        "enabled": true,
-        "provider": "duckduckgo",
-        "searxng_url": "",
-        "num_results": 5,
-        "timeout": 10,
-        "safe_search": "moderate",
-        "language": "es"
-    },
-    "code_exec": {
-        "enabled": true,
-        "timeout": 10,
-        "max_output": 8000,
-        "restricted_modules": ["subprocess", "shutil", "ctypes", "importlib", "pathlib", "multiprocessing", "threading", "socket", "http", "urllib", "requests", "paramiko", "fabric"]
-    },
-    "memory_store": {
-        "enabled": true,
-        "store_path": "data/memory_store.json",
-        "max_entries": 1000,
-        "max_key_len": 128,
-        "max_value_len": 50000,
-        "ttl_days": 0
-    },
-    "conversation_exporter": {
-        "enabled": true,
-        "export_dir": "data/exports",
-        "default_format": "markdown",
-        "include_metadata": true
     }
 }

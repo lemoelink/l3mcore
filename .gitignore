@@ -1,8 +1,8 @@
 # -----------------------------------------------
-# LEMoE .gitignore  –  Solo se sube producción
+# l3mcore .gitignore
 # -----------------------------------------------
 
-# Entornos virtuales
+# Virtual environments
 venv/
 .venv/
 env/
@@ -15,20 +15,7 @@ __pycache__/
 *.pycache
 .pytest_cache/
 
-
-private/
-
-# Plugins (ahora es submódulo)
-# plugins/
-
-# Web / landing page (se despliega por separado en Cloudflare)
-web/
-
-# Tests (no se publican en el núcleo)
-tests/
-test_router.py
-docker/
-# Modelos binarios (demasiado grandes para Git)
+# Binary models (too large for Git)
 *.onnx
 *.gguf
 *.bin
@@ -36,20 +23,17 @@ docker/
 *.pt
 *.pth
 models/*/
-config/license.asc
-config/.license_grace
-# Datos generados en runtime
+
+# Runtime data
 data/
 logs/
 
-# Archivos de entorno / secretos
+# Environment / secrets
 .env
 .env.*
 *.secret
 
-# Configuraciones de backup
-config_old.json
-experts_bak.json
+# Backups
 *.bak
 *.tmp
 
@@ -62,3 +46,6 @@ experts_bak.json
 # OS
 .DS_Store
 Thumbs.db
+
+# Tests
+tests/

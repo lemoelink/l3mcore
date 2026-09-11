@@ -1,5 +1,5 @@
 {
-  "max_experts": 5,
+  "max_experts": 4,
   "experts": [
     {
       "id": 0,
@@ -35,16 +35,6 @@
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
       "model_name": "qwen2.5:1.5b"
-    },
-    {
-      "id": 4,
-      "label": "tools",
-      "description": "Experto para usar tools",
-      "keywords": ["linux", "bash", "servidor", "ubuntu", "docker", "kubernetes", "ssh", "bashrc", "permisos", "nginx", "apache", "cron", "scripting", "terminal", "sysadmin"],
-      "type": "ollama",
-      "url": "http://127.0.0.1:11434",
-      "model_name": "llama3.1:8b",
-      "system_prompt": "Tienes acceso a herramientas. Cuando el usuario pregunte algo, usa la herramienta que corresponda. Si recibes un resultado de una herramienta, respondele al usuario con ese dato. Ejemplo: si memory_retrieve devuelve 'Carlos', responde 'Tu nombre es Carlos'."
     }
   ]
 }

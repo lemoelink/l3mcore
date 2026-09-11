@@ -7,18 +7,18 @@ set -e
 # Detect if piped from web or run locally
 if [ ! -f "api_server.py" ] && [ ! -d "modules" ]; then
     echo -e "\033[32m[L3MCOre] Downloading and installing from GitHub...\033[0m"
-    if [ -d "LeMoE" ]; then
-        echo "Directory 'LeMoE' already exists. Please remove it or run setup from inside it."
+    if [ -d "l3mcore" ]; then
+        echo "Directory 'l3mcore' already exists. Please remove it or run setup from inside it."
         exit 1
     fi
     git clone https://github.com/lemoelink/l3mcore.git
-    cd L3mcore
+    cd l3mcore
 else
     # Check for updates if we are already inside the local repo
     if command -v git &> /dev/null && [ -d ".git" ]; then
         echo -e "\033[32m[L3MCOre] Checking for updates...\033[0m"
-        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
-        git fetch https://github.com/lemoelink/l3mcore.git "$CURRENT_BRANCH" -q 2>/dev/null || true
+        CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "v1.0.0")
+        git fetch origin "$CURRENT_BRANCH" -q 2>/dev/null || true
         if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
             echo -e "\033[33m"
             echo "==========================================================="
@@ -120,69 +120,6 @@ fi
 
 echo ""
 
-# Plugin directory
-echo "Would you like to download the official plugin package? (recommended)"
-read -p "Download plugins from lemoelink/plugins? [Y/n]: " dl_plugins < /dev/tty
-if [[ -z "$dl_plugins" || "$dl_plugins" =~ ^[Yy]$ ]]; then
-    echo "Downloading plugins..."
-    if git submodule update --init --recursive plugins 2>/dev/null; then
-        echo "Plugins ready."
-    else
-        echo "Warning: Could not sync plugins submodule. Trying a clean init..."
-        git submodule deinit -f plugins 2>/dev/null || true
-        git submodule update --init plugins 2>/dev/null || echo "Plugins skipped (remote sync issue). You can retry later with: git submodule update --init plugins"
-    fi
-    # Patch: ensure license_manager only activates business logic when a license
-    # has been present at some point (silent for clean open-source installs).
-    LM_FILE="plugins/license_manager.py"
-    if [ -f "$LM_FILE" ]; then
-        python3 - <<PYEOF
-with open("$LM_FILE", "r", encoding="utf-8") as f:
-    src = f.read()
-old = """        if not os.path.exists(LICENSE_FILE):
-            if app_logger:
-                app_logger.warning(f\"license_manager: License file {LICENSE_FILE} not found.\")
-            self._handle_failure()
-            return"""
-new = """        license_exists = os.path.exists(LICENSE_FILE)
-        grace_exists   = os.path.exists(GRACE_FILE)
-
-        if not license_exists and not grace_exists:
-            # This installation has never had a license. Standard open-source mode.
-            # Exit silently without logging anything.
-            return
-
-        if not license_exists and grace_exists:
-            # The license file was removed after being present before.
-            # Honour the grace period that was already started.
-            self._handle_failure()
-            return"""
-if old in src:
-    src = src.replace(old, new)
-    with open("$LM_FILE", "w", encoding="utf-8") as f:
-        f.write(src)
-    print("license_manager patched: business logic only activates when a license has been present.")
-PYEOF
-    fi
-else
-    echo "Plugins skipped."
-fi
-
-echo ""
-
-# Tools directory
-echo "¿Deseas descargar el paquete oficial de Herramientas (Tools) de IA para dotar de habilidades extra a los agentes?"
-read -p "Download AI Tools from lemoelink/tools? [y/N]: " dl_tools < /dev/tty
-if [[ "$dl_tools" =~ ^[Yy]$ ]]; then
-    echo "Downloading tools..."
-    git submodule update --init --recursive tools
-    echo "Tools ready."
-else
-    echo "Tools skipped."
-fi
-
-echo ""
-
 # Write config
 CONFIG_FILE="config/config.json"
 mkdir -p config
@@ -249,52 +186,6 @@ if [[ "$dl_fallback" =~ ^[Yy]$ ]]; then
 else
     echo "Skipping fallback model download."
 fi
-
-
-# Custom Paperless Search models
-if [ -f "tools/paperless_search.py" ] || [ -f "plugins/paperless_search.py" ]; then
-    echo ""
-    echo "Do you want to download the custom BERT and DeBERTa models for the Paperless Search plugin?"
-    read -p "Download Paperless Search models? [y/N]: " dl_paperless < /dev/tty
-    if [[ "$dl_paperless" =~ ^[Yy]$ ]]; then
-        echo "Downloading custom BERT and DeBERTa models (this may take a few minutes)..."
-        python3 - <<PYEOF
-import sys
-import os
-sys.path.insert(0, os.getcwd())
-try:
-    try:
-        import tools.paperless_search as p
-    except ImportError:
-        import plugins.paperless_search as p
-    p._is_testing = False
-    print("Downloading BERT Classifier...")
-    p._perform_update_for(
-        model_name_log="Clasificador BERT",
-        model_dir=p.MODEL_DIR,
-        hf_api_url=p.HF_API_URL,
-        hf_resolve_url=p.HF_RESOLVE_URL,
-        files_list=p.FILES_TO_DOWNLOAD,
-        reload_callback=lambda: None
-    )
-    print("Downloading DeBERTa Distiller...")
-    p._perform_update_for(
-        model_name_log="Destilador DeBERTa",
-        model_dir=p.DISTILLER_DIR,
-        hf_api_url=p.HF_API_URL_DISTILLER,
-        hf_resolve_url=p.HF_RESOLVE_URL_DISTILLER,
-        files_list=p.FILES_TO_DOWNLOAD_DISTILLER,
-        reload_callback=lambda: None
-    )
-    print("Paperless Search models ready.")
-except Exception as e:
-    print(f"Error downloading Paperless Search models: {e}")
-    sys.exit(1)
-PYEOF
-    fi
-fi
-
-
 
 
 if [ $? -eq 0 ]; then

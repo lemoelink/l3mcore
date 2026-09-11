@@ -11,29 +11,25 @@ WORKERS="${LEMOE_WORKERS:-1}"
 
 cd "$SCRIPT_DIR"
 
-# Cargar variables de entorno desde .env si existe
+# Load environment variables from .env if present
 if [ -f "$SCRIPT_DIR/.env" ]; then
-    echo -e "\033[32m[L3MCOre] Cargando variables de entorno desde .env...\033[0m"
+    echo -e "\033[32m[L3MCOre] Loading environment variables from .env...\033[0m"
     export $(grep -v '^#' "$SCRIPT_DIR/.env" | xargs)
 fi
 
-# Comprobar actualizaciones
+# Check for updates
 if command -v git &> /dev/null && [ -d ".git" ]; then
-    echo -e "\033[32m[L3MCOre] Comprobando actualizaciones...\033[0m"
-    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "master")
-    git fetch https://github.com/lemoelink/LeMoE.git "$CURRENT_BRANCH" -q 2>/dev/null || true
+    echo -e "\033[32m[L3MCOre] Checking for updates...\033[0m"
+    CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "v1.0.0")
+    git fetch origin "$CURRENT_BRANCH" -q 2>/dev/null || true
     if [ $(git rev-list HEAD..FETCH_HEAD 2>/dev/null | wc -l) -gt 0 ]; then
         echo -e "\033[33m"
         echo "==========================================================="
-        echo "¡Hay una nueva actualización de L3MCOre disponible en la rama $CURRENT_BRANCH!"
-        echo "Para actualizar, ejecuta el comando:"
+        echo "A new L3MCOre update is available on branch $CURRENT_BRANCH!"
+        echo "To update, run the command:"
         echo "  git pull"
         echo "==========================================================="
         echo -e "\033[0m"
-    fi
-    # Sync submodule plugins to the pinned commit in this repo
-    if [ -f ".gitmodules" ] && grep -q 'plugins' .gitmodules 2>/dev/null; then
-        git submodule update plugins -q 2>/dev/null || true
     fi
 fi
 
@@ -50,11 +46,6 @@ fi
 
 echo -e "\033[32m[L3MCOre] Activating virtual environment: $VENV_DIR\033[0m"
 source "$VENV_DIR/bin/activate"
-
-# Ejecutar sincronización de módulos extendidos si procede
-if [ -f "$SCRIPT_DIR/sync_modules.py" ]; then
-    python "$SCRIPT_DIR/sync_modules.py"
-fi
 
 echo -e "\033[32m[L3MCOre] Starting API server on http://${HOST}:${PORT}\033[0m"
 echo -e "\033[32m[L3MCOre] OpenAI-compatible endpoint: http://${HOST}:${PORT}/v1\033[0m"
