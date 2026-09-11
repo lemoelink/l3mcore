@@ -97,18 +97,69 @@ Example:
 }
 ```
 
-## Usage with OpenAI clients
+## Docker Deployment
 
-```python
-from openai import OpenAI
+Official images are published to [Docker Hub (`lemoelink/l3mcore`)](https://hub.docker.com/r/lemoelink/l3mcore).
 
-client = OpenAI(base_url="http://localhost:11435/v1", api_key="not-needed")
-response = client.chat.completions.create(
-    model="l3mcore",
-    messages=[{"role": "user", "content": "Write a Python function to sort a list"}]
-)
-print(response.choices[0].message.content)
+### Available Image Tags
+
+| Image Tag | Base Image | Acceleration | Description |
+|-----------|------------|--------------|-------------|
+| `latest`, `cpu`, `1.0.0`, `1.0.0-cpu` | Debian Slim (`python:3.10-slim`) | CPU | **Default / Recommended.** Optimized for CPU inference (semantic routing model). Smallest footprint with maximum portability and compatibility across servers, desktops, and edge devices. |
+| `debian` | Debian Bullseye (`python:3.10-bullseye`) | CPU | Built on standard Debian. Identical to the general CPU build but includes standard OS libraries, utilities, and debugging tools. |
+| `cuda`, `1.0.0-cuda` | NVIDIA CUDA 12.1.1 (`ubuntu22.04`) | NVIDIA GPU (CUDA) | Built on NVIDIA CUDA runtime. Use this if you are running local GGUF/llama.cpp fallback models inside the container with GPU acceleration. Requires the `--gpus all` flag. |
+| `rocm`, `1.0.0-rocm` | AMD ROCm 6.1.2 (`ubuntu22.04`) | AMD GPU (ROCm/HIP) | Enables GPU acceleration on supported AMD Radeon and Instinct hardware via HIP. Requires passing GPU devices (`--device=/dev/kfd --device=/dev/dri`). |
+| `bundle`, `1.0.0-bundle` | Open WebUI + l3mcore | CPU | **Unified All-In-One Bundle.** Runs both `l3mcore` and **Open WebUI** in a single container. Pre-configured with internal loopback connections for instant plug-and-play chat. Exposes port `8080` (Web UI) and `11435` (API). |
+
+### Running with Docker
+
+#### 1. General CPU (Default)
+```bash
+docker run -d \
+  --name l3mcore \
+  -p 11435:11435 \
+  -v $(pwd)/config:/app/config \
+  -v $(pwd)/models:/app/models \
+  -v $(pwd)/data:/app/data \
+  lemoelink/l3mcore:latest
 ```
+
+#### 2. NVIDIA GPU (CUDA)
+```bash
+docker run -d \
+  --name l3mcore-cuda \
+  --gpus all \
+  -p 11435:11435 \
+  -v $(pwd)/config:/app/config \
+  -v $(pwd)/models:/app/models \
+  -v $(pwd)/data:/app/data \
+  lemoelink/l3mcore:cuda
+```
+
+#### 3. AMD ROCm
+```bash
+docker run -d \
+  --name l3mcore-rocm \
+  --device=/dev/kfd \
+  --device=/dev/dri \
+  -p 11435:11435 \
+  -v $(pwd)/config:/app/config \
+  -v $(pwd)/models:/app/models \
+  -v $(pwd)/data:/app/data \
+  lemoelink/l3mcore:rocm
+```
+
+#### 4. Unified Pack (l3mcore + Open WebUI)
+```bash
+docker run -d \
+  --name l3mcore-bundle \
+  -p 3000:8080 \
+  -p 11435:11435 \
+  -v $(pwd)/config:/app/lemoe/config \
+  -v open-webui-data:/app/backend/data \
+  lemoelink/l3mcore:bundle
+```
+Access the Open WebUI interface at `http://localhost:3000`.
 
 ## Environment Variables
 
