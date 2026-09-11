@@ -371,18 +371,22 @@ class GenericRouter:
 
         result: tuple = (None, 0.0)
         try:
+            import torch
+            inf_ctx = torch.inference_mode if hasattr(torch, 'inference_mode') else torch.no_grad
+
             if self.router_type == 'embedding':
                 if not self.category_embeddings:
                     return None, 0.0
 
-                query_vec = self._model.encode(
-                    "query: " + text, convert_to_tensor=True, show_progress_bar=False
-                )
+                with inf_ctx():
+                    query_vec = self._model.encode(
+                        "query: " + text, convert_to_tensor=True, show_progress_bar=False
+                    )
 
-                raw_scores: dict[str, float] = {
-                    label: self._embed_score(query_vec, data)
-                    for label, data in self.category_embeddings.items()
-                }
+                    raw_scores: dict[str, float] = {
+                        label: self._embed_score(query_vec, data)
+                        for label, data in self.category_embeddings.items()
+                    }
 
                 temp = self.softmax_temperature
                 max_raw = max(raw_scores.values())
@@ -402,12 +406,11 @@ class GenericRouter:
                 if not self._tokenizer:
                     return None, 0.0
 
-                import torch
                 inputs = self._tokenizer(
                     text, return_tensors='pt',
                     truncation=True, max_length=128, padding=True
                 )
-                with torch.no_grad():
+                with inf_ctx():
                     logits = self._model(**inputs).logits
                 probs = torch.softmax(logits, dim=-1)[0]
                 best_idx = int(probs.argmax())

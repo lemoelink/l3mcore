@@ -7,9 +7,11 @@
 ## Features
 
 - **OpenAI & Ollama compatible API** – Any client that speaks either protocol works out of the box
+- **Real-time token streaming** – Low-latency token-to-token streaming via Server-Sent Events (SSE) and ndjson
+- **vLLM & OpenAI-compatible support** – Connect local or remote vLLM, TGI, LocalAI, or Ollama instances natively
 - **Semantic hybrid router** – Multi-signal scoring (embeddings + keywords + fuzzy matching) with softmax normalization
 - **Multi-backend expert dispatch** – Route to Ollama, OpenAI, Anthropic, Gemini (via LiteLLM), local ONNX, or local GGUF models
-- **Silent self-correction** – Failed expert requests automatically redirect to the fallback model
+- **Circuit Breaker & Silent self-correction** – Automatic failover and fast circuit tripping for degraded backends
 - **Hot-reload** – Edit `experts.json` or `config.json` and changes apply without restart
 - **Rate limiting** – Sliding-window per-IP rate limiter (configurable)
 - **Security headers** – XSS protection, nosniff, DENY framing, no-referrer
@@ -37,9 +39,10 @@ The server starts on `http://0.0.0.0:11435` by default.
 |--------|----------|-------------|
 | `GET` | `/` | Server info |
 | `GET` | `/v1/models` | List available experts (OpenAI format) |
-| `POST` | `/v1/chat/completions` | Chat inference (OpenAI format, streaming supported) |
+| `GET` | `/v1/models/<model_id>` | Retrieve specific model details (OpenAI format) |
+| `POST` | `/v1/chat/completions` | Chat inference (OpenAI format, real streaming supported) |
 | `GET` | `/api/tags` | List models (Ollama format) |
-| `POST` | `/api/chat` | Chat inference (Ollama format, streaming supported) |
+| `POST` | `/api/chat` | Chat inference (Ollama format, real streaming supported) |
 | `GET` | `/api/version` | Server version |
 | `GET` | `/health` | System health status |
 | `GET` | `/health/experts` | Expert backend health probe |
@@ -80,6 +83,15 @@ Example:
       "type": "ollama",
       "url": "http://127.0.0.1:11434",
       "model_name": "qwen2.5-coder:1.5b"
+    },
+    {
+      "id": 2,
+      "label": "experto_vllm",
+      "description": "High throughput expert running on local or remote vLLM server.",
+      "keywords": ["analisis", "complejo", "razonamiento", "investigacion"],
+      "type": "api",
+      "api_base": "http://localhost:8000/v1",
+      "model_name": "meta-llama/Meta-Llama-3-8B-Instruct"
     }
   ]
 }

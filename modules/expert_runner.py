@@ -7,6 +7,7 @@ import threading
 import urllib.request
 import urllib.error
 from urllib.parse import urlparse
+from typing import Generator
 from modules.logger import app_logger
 
 try:
@@ -15,6 +16,14 @@ try:
 except ImportError:
     LITELLM_AVAILABLE = False
     app_logger.warning("litellm is not installed. External API calls may fail.")
+
+try:
+    import urllib3
+    _HTTP_POOL = urllib3.PoolManager(maxsize=10)
+    URLLIB3_AVAILABLE = True
+except ImportError:
+    _HTTP_POOL = None
+    URLLIB3_AVAILABLE = False
 
 
 _ALLOWED_SCHEMES = {"http", "https"}
@@ -32,6 +41,51 @@ _DEFAULT_ALLOWED_HOSTS = {"localhost", "127.0.0.1", "::1"}
 _DEFAULT_API_TIMEOUT = 60  # seconds
 
 
+# ---------------------------------------------------------------------------
+# Circuit Breaker: fast failover when backends are unreachable
+# ---------------------------------------------------------------------------
+
+class CircuitBreaker:
+    """Lightweight in-memory circuit breaker to prevent hanging on degraded backends."""
+    def __init__(self, failure_threshold: int = 3, recovery_time: float = 30.0):
+        self.threshold = failure_threshold
+        self.recovery_time = recovery_time
+        self._failures: dict[str, int] = {}
+        self._opened_at: dict[str, float] = {}
+        self._lock = threading.Lock()
+
+    def is_available(self, label: str) -> bool:
+        with self._lock:
+            if label not in self._opened_at:
+                return True
+            if time.time() - self._opened_at[label] > self.recovery_time:
+                # Cooldown period elapsed, allow probe request
+                del self._opened_at[label]
+                self._failures[label] = 0
+                app_logger.info(f"CircuitBreaker: Cooldown elapsed for '{label}', probing backend.")
+                return True
+            return False
+
+    def record_success(self, label: str) -> None:
+        with self._lock:
+            self._failures[label] = 0
+            self._opened_at.pop(label, None)
+
+    def record_failure(self, label: str) -> None:
+        with self._lock:
+            count = self._failures.get(label, 0) + 1
+            self._failures[label] = count
+            if count >= self.threshold:
+                self._opened_at[label] = time.time()
+                app_logger.warning(
+                    f"CircuitBreaker: Backend '{label}' tripped ({count} consecutive errors). "
+                    f"Fast-failing to fallback for {self.recovery_time}s."
+                )
+
+
+circuit_breaker = CircuitBreaker()
+
+
 def _get_runner_config(config_manager=None) -> dict:
     if config_manager is None:
         return {}
@@ -41,14 +95,6 @@ def _get_runner_config(config_manager=None) -> dict:
 def _validate_ollama_url(url: str, allowed_hosts: set | None = None) -> str:
     """
     Validates an Ollama endpoint URL.
-
-    - Only http/https schemes are accepted.
-    - Cloud metadata IP ranges (169.254.x.x etc.) are always blocked.
-    - Hostname validation: if the value resolves to an IP it is checked against
-      the blocked networks; if it is a plain hostname it must be in allowed_hosts.
-    - Private/loopback IPs are allowed by default.
-
-    Raises ValueError on invalid URLs.
     """
     if allowed_hosts is None:
         allowed_hosts = _DEFAULT_ALLOWED_HOSTS
@@ -73,7 +119,6 @@ def _validate_ollama_url(url: str, allowed_hosts: set | None = None) -> str:
     except ValueError as exc:
         if "blocked network" in str(exc) or "scheme" in str(exc):
             raise
-        # It's a plain hostname — check against the allowlist
         if hostname not in allowed_hosts:
             raise ValueError(
                 f"Ollama hostname '{hostname}' is not in the allowed hosts list. "
@@ -105,20 +150,12 @@ def _extract_text_from_messages(messages) -> str:
     return " ".join(parts)
 
 
-_SYS_PROMPT_MAX = 4000  # characters — hard cap before injecting into messages
+_SYS_PROMPT_MAX = 4000  # characters cap
 
 
 def _inject_system_prompt(messages, expert_config: dict) -> list:
     """
     Prepends a system message from the expert's 'system_prompt' field.
-
-    Rules:
-    - Only acts when 'system_prompt' is a non-empty string in expert_config.
-    - Truncated to _SYS_PROMPT_MAX characters before use.
-    - If a system message already exists at index 0 it is left intact and the
-      expert prompt is prepended before it, so user-supplied system context
-      is never silently discarded.
-    - Returns a new list; the original messages list is never mutated.
     """
     raw = expert_config.get("system_prompt", "")
     if not isinstance(raw, str) or not raw.strip():
@@ -133,26 +170,14 @@ def _inject_system_prompt(messages, expert_config: dict) -> list:
     return [system_msg] + msgs
 
 
-def _notify_telemetry(expert_label: str, latency_ms: float, prompt_tokens: int, completion_tokens: int, success: bool = True) -> None:
-    """Pushes detailed telemetry data to the telemetry plugin if loaded."""
-    try:
-        import sys
-        m = sys.modules.get("l3mcore_plugin.telemetry_dashboard")
-        if m and hasattr(m, "record_telemetry"):
-            m.record_telemetry(expert_label, latency_ms, prompt_tokens, completion_tokens, success)
-    except Exception:
-        pass
-
-
 class ExpertDispatcher:
     """
     Routes inference to the correct backend based on the expert config dict.
 
     Supported backends:
-      'api'    -> External REST API via litellm (OpenAI, Anthropic, Groq, ...).
-                  API key is read from the environment variable named in api_key_env.
-      'ollama' -> Local or remote Ollama instance.
-                  URL is validated for scheme and blocked networks before each call.
+      'api'    -> External REST API via litellm (OpenAI, Anthropic, vLLM, LocalAI, ...).
+                  Compatible with vLLM via provider='openai' and api_base='http://.../v1'.
+      'ollama' -> Local or remote Ollama instance with HTTP Keep-Alive pooling.
       'local'  -> Local ONNX model (via SpecificModelRunner) or GGUF (via AIEngine).
     """
 
@@ -161,67 +186,100 @@ class ExpertDispatcher:
         self.ai_engine = ai_engine
         self._config_manager = config_manager
         self._gguf_lock = threading.Lock()
+        self.circuit_breaker = circuit_breaker
 
     def _runner_cfg(self) -> dict:
         return _get_runner_config(self._config_manager)
 
-    def run(self, messages, expert_config: dict, tools: list | None = None) -> str | dict:
+    def run(self, messages, expert_config: dict, gen_params: dict | None = None) -> str:
         """
-        Runs inference for the given expert.
-        tools: optional list of OpenAI-format tool definitions.
-               Only passed to api/ollama experts; local models ignore it.
-        Returns a string response, or a dict with 'tool_calls' if the model
-        requests tool execution (only possible when tools is not None).
+        Runs non-streaming inference for the given expert.
         """
+        label = expert_config.get('label', 'unknown')
+        if not self.circuit_breaker.is_available(label):
+            raise RuntimeError(f"Circuit breaker open for expert '{label}'")
+
         expert_type = expert_config.get('type', 'local').lower()
         messages = _inject_system_prompt(messages, expert_config)
-        t0 = time.monotonic()
-        prompt_tokens = 0
-        completion_tokens = 0
-        success = True
+        gen_params = gen_params or {}
+
         try:
             if expert_type == 'api':
-                result, prompt_tokens, completion_tokens = self._run_api(messages, expert_config, tools=tools)
+                result = self._run_api(messages, expert_config, gen_params)
             elif expert_type == 'ollama':
-                result, prompt_tokens, completion_tokens = self._run_ollama(messages, expert_config, tools=tools)
+                result = self._run_ollama(messages, expert_config, gen_params)
             elif expert_type == 'local':
-                # Modelos locales no soportan tool calling; tools se ignora
                 result = self._run_local(messages, expert_config)
-                prompt_tokens = int(len(_extract_text_from_messages(messages).split()) * 1.3)
-                completion_tokens = int(len(result.split()) * 1.3)
             else:
                 raise ValueError(f"Unknown expert type: {expert_type}")
 
-            latency_ms = (time.monotonic() - t0) * 1000
-            _notify_telemetry(expert_config.get('label', 'unknown'), latency_ms, prompt_tokens, completion_tokens, success=True)
+            self.circuit_breaker.record_success(label)
             return result
         except Exception as e:
-            success = False
-            latency_ms = (time.monotonic() - t0) * 1000
-            _notify_telemetry(expert_config.get('label', 'unknown'), latency_ms, prompt_tokens, completion_tokens, success=False)
-            app_logger.error(f"Error executing expert '{expert_config.get('label')}': {e}")
+            self.circuit_breaker.record_failure(label)
+            app_logger.error(f"Error executing expert '{label}': {e}")
             raise
 
-    def _run_api(self, messages, config: dict, tools: list | None = None) -> tuple:
-        if not LITELLM_AVAILABLE:
-            raise ImportError("litellm required for 'api' type experts")
+    def run_stream(self, messages, expert_config: dict, gen_params: dict | None = None) -> Generator[str, None, None]:
+        """
+        Runs real token-to-token streaming inference for the given expert.
+        Yields text chunks as they arrive from the backend.
+        """
+        label = expert_config.get('label', 'unknown')
+        if not self.circuit_breaker.is_available(label):
+            raise RuntimeError(f"Circuit breaker open for expert '{label}'")
 
+        expert_type = expert_config.get('type', 'local').lower()
+        messages = _inject_system_prompt(messages, expert_config)
+        gen_params = gen_params or {}
+
+        try:
+            if expert_type == 'api':
+                for chunk in self._run_api_stream(messages, expert_config, gen_params):
+                    yield chunk
+            elif expert_type == 'ollama':
+                for chunk in self._run_ollama_stream(messages, expert_config, gen_params):
+                    yield chunk
+            elif expert_type == 'local':
+                # Local models (ONNX/GGUF) yield full result in one piece
+                yield self._run_local(messages, expert_config)
+            else:
+                raise ValueError(f"Unknown expert type: {expert_type}")
+
+            self.circuit_breaker.record_success(label)
+        except Exception as e:
+            self.circuit_breaker.record_failure(label)
+            app_logger.error(f"Error executing streaming expert '{label}': {e}")
+            raise
+
+    def _prepare_api_kwargs(self, messages, config: dict, gen_params: dict, stream: bool = False) -> dict:
         provider = config.get('provider', '')
         model_name = config.get('model_name', '')
         if not model_name:
             raise ValueError("model_name required for 'api' expert")
 
-        litellm_model = f"{provider}/{model_name}" if provider and provider != 'openai' else model_name
+        # Support for custom api_base (vLLM, LocalAI, Ollama OpenAI endpoint, TGI)
+        api_base = config.get('api_base') or config.get('url')
+
+        if provider and provider.lower() != 'openai':
+            litellm_model = f"{provider}/{model_name}"
+        elif api_base:
+            # When api_base is supplied (like vLLM), prefix with openai/ so litellm treats it as OpenAI-compatible
+            litellm_model = f"openai/{model_name}" if not model_name.startswith("openai/") else model_name
+        else:
+            litellm_model = model_name
 
         env_var = config.get('api_key_env', '')
-        api_key = os.environ.get(env_var) if env_var else None
+        api_key = os.environ.get(env_var) if env_var else config.get('api_key')
         if not api_key:
-            app_logger.warning(f"API key not found in env var '{env_var}'. litellm will try its defaults.")
+            if api_base:
+                # Local servers like vLLM do not require real keys, dummy string suffices
+                api_key = "dummy-vllm-key"
+            else:
+                app_logger.warning(f"API key not found in env var '{env_var}'. litellm will try defaults.")
 
         cfg = self._runner_cfg()
         timeout = cfg.get("api_timeout", _DEFAULT_API_TIMEOUT)
-
-        app_logger.info(f"ExpertDispatcher [api]: calling {litellm_model} (timeout={timeout}s)")
 
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
@@ -235,19 +293,6 @@ class ExpertDispatcher:
             new_msg = {"role": msg.get("role")}
             content = msg.get("content")
             images = msg.get("images")
-
-            # Pasar tool_call_id y tool_calls tal cual para mensajes de herramientas
-            if msg.get("role") == "tool":
-                new_msg["content"] = str(content) if content is not None else ""
-                if "tool_call_id" in msg:
-                    new_msg["tool_call_id"] = msg["tool_call_id"]
-                formatted_messages.append(new_msg)
-                continue
-            if msg.get("tool_calls"):
-                new_msg["tool_calls"] = msg["tool_calls"]
-                new_msg["content"] = content or ""
-                formatted_messages.append(new_msg)
-                continue
 
             if isinstance(content, list):
                 new_msg["content"] = content
@@ -274,23 +319,45 @@ class ExpertDispatcher:
             "messages": formatted_messages,
             "api_key": api_key,
             "timeout": timeout,
+            "stream": stream,
         }
-        if tools:
-            kwargs["tools"] = tools
+        if api_base:
+            kwargs["api_base"] = api_base
 
+        # Propagate standard LLM generation parameters
+        for p in ("temperature", "top_p", "max_tokens", "stop", "presence_penalty", "frequency_penalty"):
+            val = gen_params.get(p)
+            if val is not None:
+                kwargs[p] = val
+
+        return kwargs
+
+    def _run_api(self, messages, config: dict, gen_params: dict) -> str:
+        if not LITELLM_AVAILABLE:
+            raise ImportError("litellm required for 'api' type experts")
+
+        kwargs = self._prepare_api_kwargs(messages, config, gen_params, stream=False)
+        app_logger.info(f"ExpertDispatcher [api]: calling {kwargs.get('model')}")
         response = litellm.completion(**kwargs)
-        usage = response.get("usage", {})
-        prompt_tokens = usage.get("prompt_tokens", 0)
-        completion_tokens = usage.get("completion_tokens", 0)
-
         choice = response.choices[0]
-        # Si el modelo pide herramientas, devolver el dict de tool_calls
-        if getattr(choice, 'finish_reason', '') == 'tool_calls':
-            return {"tool_calls": choice.message.tool_calls}, prompt_tokens, completion_tokens
+        return choice.message.content.strip()
 
-        return choice.message.content.strip(), prompt_tokens, completion_tokens
+    def _run_api_stream(self, messages, config: dict, gen_params: dict) -> Generator[str, None, None]:
+        if not LITELLM_AVAILABLE:
+            raise ImportError("litellm required for 'api' type experts")
 
-    def _run_ollama(self, messages, config: dict, tools: list | None = None) -> tuple:
+        kwargs = self._prepare_api_kwargs(messages, config, gen_params, stream=True)
+        app_logger.info(f"ExpertDispatcher [api-stream]: streaming {kwargs.get('model')}")
+        response = litellm.completion(**kwargs)
+        for chunk in response:
+            if not chunk or not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            content = getattr(delta, 'content', None)
+            if content:
+                yield content
+
+    def _prepare_ollama_payload(self, messages, config: dict, gen_params: dict, stream: bool = False) -> tuple[str, dict, float]:
         raw_url = config.get('url', 'http://127.0.0.1:11434').rstrip('/')
         model_name = config.get('model_name', 'llama3')
 
@@ -300,7 +367,6 @@ class ExpertDispatcher:
 
         url = _validate_ollama_url(raw_url, allowed_hosts=allowed_hosts)
         endpoint = f"{url}/api/chat"
-        app_logger.info(f"ExpertDispatcher [ollama]: POST {endpoint} ({model_name})")
 
         if isinstance(messages, str):
             messages = [{"role": "user", "content": messages}]
@@ -311,16 +377,11 @@ class ExpertDispatcher:
                 formatted_messages.append(msg)
                 continue
 
-            new_msg = {
-                "role": msg.get("role"),
-            }
-
+            new_msg = {"role": msg.get("role")}
             content = msg.get("content")
             images = msg.get("images") or []
             if not isinstance(images, list):
                 images = [images]
-            else:
-                images = list(images)
 
             clean_images = []
             for img in images:
@@ -353,34 +414,103 @@ class ExpertDispatcher:
 
             formatted_messages.append(new_msg)
 
-        data = {"model": model_name, "messages": formatted_messages, "stream": False}
-        if tools:
-            data["tools"] = tools
+        data = {
+            "model": model_name,
+            "messages": formatted_messages,
+            "stream": stream,
+        }
 
-        app_logger.info(f"ExpertDispatcher [ollama]: {len(formatted_messages)} msgs, roles={[m.get('role') for m in formatted_messages]}, tools={len(tools) if tools else 0}")
-        if formatted_messages:
-            first = formatted_messages[0]
-            app_logger.info(f"ExpertDispatcher [ollama]: msg[0] role={first.get('role')} content={str(first.get('content',''))[:150]}")
+        # Ollama generation options
+        options = {}
+        if "temperature" in gen_params and gen_params["temperature"] is not None:
+            options["temperature"] = float(gen_params["temperature"])
+        if "top_p" in gen_params and gen_params["top_p"] is not None:
+            options["top_p"] = float(gen_params["top_p"])
+        if "max_tokens" in gen_params and gen_params["max_tokens"] is not None:
+            options["num_predict"] = int(gen_params["max_tokens"])
+        if "stop" in gen_params and gen_params["stop"] is not None:
+            options["stop"] = gen_params["stop"]
 
-        req = urllib.request.Request(
-            endpoint,
-            data=json.dumps(data).encode('utf-8'),
-            headers={'Content-Type': 'application/json'}
-        )
+        if options:
+            data["options"] = options
+
+        return endpoint, data, timeout
+
+    def _run_ollama(self, messages, config: dict, gen_params: dict) -> str:
+        endpoint, data, timeout = self._prepare_ollama_payload(messages, config, gen_params, stream=False)
+        payload_bytes = json.dumps(data).encode('utf-8')
+
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                result = json.loads(resp.read().decode('utf-8'))
-                prompt_tokens = result.get('prompt_eval_count', 0)
-                completion_tokens = result.get('eval_count', 0)
-                message = result.get('message', {})
+            if URLLIB3_AVAILABLE and _HTTP_POOL is not None:
+                resp = _HTTP_POOL.request(
+                    'POST',
+                    endpoint,
+                    body=payload_bytes,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=timeout
+                )
+                if resp.status != 200:
+                    raise RuntimeError(f"Ollama returned HTTP status {resp.status}: {resp.data.decode('utf-8')}")
+                result = json.loads(resp.data.decode('utf-8'))
+            else:
+                req = urllib.request.Request(
+                    endpoint,
+                    data=payload_bytes,
+                    headers={'Content-Type': 'application/json'}
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    result = json.loads(resp.read().decode('utf-8'))
 
-                # Ollama devuelve tool_calls dentro de message si el modelo los solicita
-                if message.get('tool_calls'):
-                    return {"tool_calls": message['tool_calls']}, prompt_tokens, completion_tokens
+            return result.get('message', {}).get('content', '').strip()
+        except Exception as e:
+            raise RuntimeError(f"Error communicating with Ollama at {endpoint}: {e}")
 
-                return message.get('content', '').strip(), prompt_tokens, completion_tokens
-        except urllib.error.URLError as e:
-            raise RuntimeError(f"Error connecting to Ollama at {url}: {e}")
+    def _run_ollama_stream(self, messages, config: dict, gen_params: dict) -> Generator[str, None, None]:
+        endpoint, data, timeout = self._prepare_ollama_payload(messages, config, gen_params, stream=True)
+        payload_bytes = json.dumps(data).encode('utf-8')
+
+        try:
+            if URLLIB3_AVAILABLE and _HTTP_POOL is not None:
+                resp = _HTTP_POOL.request(
+                    'POST',
+                    endpoint,
+                    body=payload_bytes,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=timeout,
+                    preload_content=False
+                )
+                try:
+                    for line in resp.stream():
+                        if not line:
+                            continue
+                        line_str = line.decode('utf-8').strip()
+                        if not line_str:
+                            continue
+                        chunk = json.loads(line_str)
+                        content = chunk.get('message', {}).get('content', '')
+                        if content:
+                            yield content
+                finally:
+                    resp.release_conn()
+            else:
+                req = urllib.request.Request(
+                    endpoint,
+                    data=payload_bytes,
+                    headers={'Content-Type': 'application/json'}
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    for line in resp:
+                        if not line:
+                            continue
+                        line_str = line.decode('utf-8').strip()
+                        if not line_str:
+                            continue
+                        chunk = json.loads(line_str)
+                        content = chunk.get('message', {}).get('content', '')
+                        if content:
+                            yield content
+        except Exception as e:
+            raise RuntimeError(f"Error streaming from Ollama at {endpoint}: {e}")
 
     def _run_local(self, messages, config: dict) -> str:
         model_format = config.get('format', 'onnx').lower()
@@ -405,7 +535,7 @@ class ExpertDispatcher:
                     self.ai_engine.model_path = original_path
 
         elif model_format == 'huggingface':
-            raise NotImplementedError("Local 'huggingface' format not implemented yet.")
+            raise NotImplementedError("Local 'huggingface' format not implemented.")
 
         else:
             raise ValueError(f"Unknown local format: {model_format}")

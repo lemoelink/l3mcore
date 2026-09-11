@@ -2,6 +2,15 @@
 
 ## [1.0.0] - 2026-09-11
 
+### Added
+- Real-time token-to-token streaming for both OpenAI SSE (`/v1/chat/completions`) and Ollama ndjson (`/api/chat`)
+- Native vLLM & custom OpenAI-compatible server support via `api_base` in expert definitions
+- Retrieval endpoint `GET /v1/models/<model_id>` for OpenAI client specification compliance
+- Forwarding of standard generation parameters (`temperature`, `top_p`, `max_tokens`, `stop`, penalty flags) to backends
+- Lightweight in-memory Circuit Breaker to fast-fail degraded backends without request timeouts
+- HTTP Keep-Alive connection pooling for Ollama endpoints via `urllib3`
+- Router inference performance optimization using `torch.inference_mode`
+
 ### Changed
 - Complete simplification of the codebase
 - Version bump to 1.0.0

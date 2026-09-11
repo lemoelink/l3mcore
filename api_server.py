@@ -304,98 +304,32 @@ def _clean_assistant_response(text: str) -> str:
     return new_text.strip()
 
 
-def _run_inference(messages: list, model_hint: str) -> tuple[str, str]:
+def _resolve_expert_and_config(messages: list, model_hint: str) -> tuple[str, dict]:
     """
-    Wrapper for _run_inference_impl that checks security interceptor
-    and records local telemetry.
+    Evaluates router cascade to select the best expert label and its configuration.
+    Integrates Circuit Breaker check to skip failing backends immediately.
     """
     core = _Core.get()
+    router = core["router"]
     config = core["config"]
+    dispatcher = core["dispatcher"]
+
     router_cfg = config.get('router', {})
     ctx_messages = router_cfg.get('context_messages', 3)
     ctx_chars = router_cfg.get('context_max_chars', 1600)
+    threshold = router_cfg.get('confidence_threshold', 0.4)
 
     routing_ctx = _extract_routing_context(messages, ctx_messages, ctx_chars)
     last_text = routing_ctx["last_user_text"]
 
-    # 1. Check security interceptor
-    try:
-        from modules.utils_text import sanitize
-        intercepted = sanitize(last_text)
-        if intercepted is not None:
-            return intercepted, "canary_interceptor"
-    except Exception as e:
-        app_logger.warning(f"Security interceptor failed: {e}")
-
-    t0 = time.monotonic()
-
-    # 2. Run core inference
-    res_text, used_lbl = _run_inference_impl(messages, model_hint)
-    res_text = _clean_assistant_response(res_text)
-
-    # 3. Record telemetry
-    duration = time.monotonic() - t0
-    try:
-        from modules.session_store import push_context
-        m_type = "unknown"
-        if used_lbl == "fallback":
-            m_type = "local-gguf"
-        elif used_lbl == "error":
-            m_type = "error"
-        else:
-            try:
-                if hasattr(core["router"], 'get_expert_config'):
-                    cfg = core["router"].get_expert_config(used_lbl)
-                    if cfg:
-                        m_type = cfg.get("type", "local")
-                        if m_type == "local":
-                            m_type = f"local-{cfg.get('format', 'onnx')}"
-            except Exception:
-                pass
-        push_context(used_lbl, m_type, last_text, res_text, duration)
-    except Exception as te:
-        app_logger.warning(f"Telemetry tracking failed: {te}")
-
-    return res_text, used_lbl
-
-
-def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
-    """
-    Executes inference with cascading contextual routing.
-    Returns: (response_text, used_model)
-    """
-    core = _Core.get()
-    router        = core["router"]
-    config        = core["config"]
-    dispatcher    = core["dispatcher"]
-    ai_engine     = core["ai_engine"]
-
-    router_cfg   = config.get('router', {})
-    ctx_messages = router_cfg.get('context_messages', 3)
-    ctx_chars    = router_cfg.get('context_max_chars', 1600)
-    threshold    = router_cfg.get('confidence_threshold', 0.4)
-
-    routing_ctx = _extract_routing_context(messages, ctx_messages, ctx_chars)
-    last_text = routing_ctx["last_user_text"]
-
-    def _execute_expert(label: str, score: float = 0.0) -> str:
+    # 1. Direct model hint if specified and not default
+    if model_hint and model_hint != DEFAULT_MODEL:
         if hasattr(router, 'get_expert_config'):
-            expert_config = router.get_expert_config(label)
-            if expert_config:
-                return dispatcher.run(messages, expert_config)
-        cfg = {"type": "local", "format": "onnx", "label": label}
-        return dispatcher.run(messages, cfg)
+            cfg = router.get_expert_config(model_hint)
+            if cfg and dispatcher.circuit_breaker.is_available(model_hint):
+                return model_hint, cfg
 
-    def _do_fallback() -> tuple[str, str]:
-        try:
-            app_logger.info("[Fallback] Using fallback expert.")
-            result = _execute_expert("fallback", score=0.0)
-            return result, "fallback"
-        except Exception as e:
-            app_logger.error(f"Critical error in fallback engine: {e}")
-            return "An internal error occurred. Please try again later.", "error"
-
-    # Phase 1: Regex triggers matching
+    # 2. Regex triggers matching
     if last_text:
         try:
             if hasattr(router, 'categories') and router.categories:
@@ -407,27 +341,121 @@ def _run_inference_impl(messages: list, model_hint: str) -> tuple[str, str]:
                     for pattern in triggers:
                         if isinstance(pattern, str) and pattern:
                             if re.search(pattern, last_text, re.IGNORECASE):
-                                app_logger.info(f"[Regex] Matched '{pattern}' -> routing directly to '{label}'")
-                                result = _execute_expert(label, score=1.0)
-                                return result, label
+                                if dispatcher.circuit_breaker.is_available(label):
+                                    app_logger.info(f"[Regex] Matched '{pattern}' -> '{label}'")
+                                    return label, cfg
         except Exception as e:
             app_logger.error(f"[Regex] Error evaluating triggers: {e}")
 
-    # Phase 2: Semantic/embedding routing
+    # 3. Semantic / embedding router
     label, score = router.predict(last_text)
     if label and label not in ('null', 'fallback') and score >= threshold:
-        app_logger.info(f"[Router] '{last_text[:60]}' -> {label} ({score:.2f})")
-        try:
-            result = _execute_expert(label, score=score)
-            return result, label
-        except Exception as e:
-            app_logger.error(f"[Auto-Correction] Routed expert '{label}' failed: {e}. Redirecting to fallback.")
-            return _do_fallback()
+        if dispatcher.circuit_breaker.is_available(label):
+            app_logger.info(f"[Router] '{last_text[:60]}' -> {label} ({score:.2f})")
+            if hasattr(router, 'get_expert_config'):
+                cfg = router.get_expert_config(label)
+                if cfg:
+                    return label, cfg
+            return label, {"type": "local", "format": "onnx", "label": label}
+        else:
+            app_logger.warning(f"[CircuitBreaker] Expert '{label}' circuit is open. Routing to fallback.")
     else:
         app_logger.info(f"[Router] Score {score:.2f} below threshold ({threshold}). Using fallback.")
 
-    # Phase 3: Fallback
-    return _do_fallback()
+    # 4. Fallback expert
+    if hasattr(router, 'get_expert_config'):
+        fb_cfg = router.get_expert_config("fallback")
+        if fb_cfg:
+            return "fallback", fb_cfg
+    return "fallback", {"type": "local", "format": "gguf", "label": "fallback"}
+
+
+def _run_inference(messages: list, model_hint: str, gen_params: dict | None = None) -> tuple[str, str]:
+    """
+    Non-streaming inference execution with security sanitization and telemetry.
+    """
+    core = _Core.get()
+    dispatcher = core["dispatcher"]
+    label, cfg = _resolve_expert_and_config(messages, model_hint)
+
+    routing_ctx = _extract_routing_context(messages)
+    last_text = routing_ctx["last_user_text"]
+
+    # 1. Security interceptor
+    try:
+        from modules.utils_text import sanitize
+        intercepted = sanitize(last_text)
+        if intercepted is not None:
+            return intercepted, "canary_interceptor"
+    except Exception as e:
+        app_logger.warning(f"Security interceptor failed: {e}")
+
+    t0 = time.monotonic()
+
+    # 2. Dispatch with fallback
+    try:
+        res_text = dispatcher.run(messages, cfg, gen_params)
+        used_lbl = label
+    except Exception as e:
+        app_logger.error(f"Execution failed on '{label}': {e}. Triggering fallback.")
+        try:
+            fb_cfg = core["router"].get_expert_config("fallback") if hasattr(core["router"], 'get_expert_config') else None
+            fb_cfg = fb_cfg or {"type": "local", "format": "gguf", "label": "fallback"}
+            res_text = dispatcher.run(messages, fb_cfg, gen_params)
+            used_lbl = "fallback"
+        except Exception as fb_err:
+            app_logger.error(f"Fallback also failed: {fb_err}")
+            return "An internal error occurred. Please try again later.", "error"
+
+    res_text = _clean_assistant_response(res_text)
+
+    # 3. Telemetry tracking
+    duration = time.monotonic() - t0
+    try:
+        from modules.session_store import push_context
+        m_type = cfg.get("type", "local")
+        if m_type == "local":
+            m_type = f"local-{cfg.get('format', 'onnx')}"
+        push_context(used_lbl, m_type, last_text, res_text, duration)
+    except Exception as te:
+        app_logger.warning(f"Telemetry tracking failed: {te}")
+
+    return res_text, used_lbl
+
+
+def _run_inference_stream(messages: list, model_hint: str, gen_params: dict | None = None):
+    """
+    Yields chunks token-to-token in real time.
+    Returns generator of chunks and model label.
+    """
+    core = _Core.get()
+    dispatcher = core["dispatcher"]
+    label, cfg = _resolve_expert_and_config(messages, model_hint)
+
+    routing_ctx = _extract_routing_context(messages)
+    last_text = routing_ctx["last_user_text"]
+
+    # 1. Security interceptor
+    try:
+        from modules.utils_text import sanitize
+        intercepted = sanitize(last_text)
+        if intercepted is not None:
+            def _interceptor_stream():
+                yield intercepted
+            return _interceptor_stream(), "canary_interceptor"
+    except Exception as e:
+        app_logger.warning(f"Security interceptor failed: {e}")
+
+    # 2. Return real streaming generator with fallback
+    try:
+        stream_gen = dispatcher.run_stream(messages, cfg, gen_params)
+        return stream_gen, label
+    except Exception as e:
+        app_logger.error(f"Failed to start stream on '{label}': {e}. Using fallback stream.")
+        fb_cfg = core["router"].get_expert_config("fallback") if hasattr(core["router"], 'get_expert_config') else None
+        fb_cfg = fb_cfg or {"type": "local", "format": "gguf", "label": "fallback"}
+        stream_gen = dispatcher.run_stream(messages, fb_cfg, gen_params)
+        return stream_gen, "fallback"
 
 
 # ---------------------------------------------------------------------------
@@ -542,6 +570,22 @@ def list_models_openai():
     })
 
 
+@app.route("/v1/models/<path:model_id>", methods=["GET"])
+def get_model_openai(model_id):
+    """Retrieves a specific model instance (OpenAI standard)."""
+    available = _Core.get()["available_models"]
+    if model_id in available:
+        return jsonify(_openai_model_object(model_id))
+    return jsonify({
+        "error": {
+            "message": f"The model '{model_id}' does not exist",
+            "type": "invalid_request_error",
+            "param": "model",
+            "code": "model_not_found"
+        }
+    }), 404
+
+
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat_completions():
     content_type = request.content_type or ""
@@ -555,6 +599,14 @@ def chat_completions():
     model_hint  = body.get("model", DEFAULT_MODEL)
     do_stream   = body.get("stream", False)
 
+    # Extract standard LLM generation parameters
+    gen_params = {}
+    for param in ("temperature", "top_p", "max_tokens", "max_completion_tokens", "stop", "presence_penalty", "frequency_penalty"):
+        if param in body and body[param] is not None:
+            gen_params[param] = body[param]
+    if "max_completion_tokens" in gen_params and "max_tokens" not in gen_params:
+        gen_params["max_tokens"] = gen_params.pop("max_completion_tokens")
+
     routing_ctx = _extract_routing_context(messages)
     user_text = routing_ctx["last_user_text"]
     if not user_text:
@@ -565,8 +617,10 @@ def chat_completions():
     if do_stream:
         def generate():
             try:
-                response_text, used_model = _run_inference(messages, model_hint)
-                yield _openai_chat_chunk(response_text, used_model)
+                stream_gen, used_model = _run_inference_stream(messages, model_hint, gen_params)
+                for chunk in stream_gen:
+                    if chunk:
+                        yield _openai_chat_chunk(chunk, used_model)
                 yield _openai_chat_chunk("", used_model, finish_reason="stop")
                 yield "data: [DONE]\n\n"
             except Exception as e:
@@ -584,7 +638,7 @@ def chat_completions():
         )
     else:
         try:
-            response_text, used_model = _run_inference(messages, model_hint)
+            response_text, used_model = _run_inference(messages, model_hint, gen_params)
             return jsonify(_openai_chat_response(response_text, used_model))
         except Exception as e:
             app_logger.error(f"Inference error: {e}")
@@ -627,7 +681,7 @@ def ollama_tags():
 def ollama_chat():
     """
     Ollama POST /api/chat
-    Body: { model, messages: [{role, content}], stream }
+    Body: { model, messages: [{role, content}], stream, options }
     """
     content_type = request.content_type or ""
     if "application/json" not in content_type:
@@ -637,6 +691,19 @@ def ollama_chat():
     messages   = body.get("messages") or []
     model_hint = body.get("model", DEFAULT_MODEL)
     do_stream  = body.get("stream", True)  # Ollama defaults to stream=true
+
+    # Extract options and generation params
+    gen_params = {}
+    options = body.get("options") or {}
+    for param in ("temperature", "top_p", "stop"):
+        if param in options and options[param] is not None:
+            gen_params[param] = options[param]
+        elif param in body and body[param] is not None:
+            gen_params[param] = body[param]
+    if "num_predict" in options and options["num_predict"] is not None:
+        gen_params["max_tokens"] = options["num_predict"]
+    elif "max_tokens" in body and body["max_tokens"] is not None:
+        gen_params["max_tokens"] = body["max_tokens"]
 
     routing_ctx = _extract_routing_context(messages)
     user_text = routing_ctx["last_user_text"]
@@ -665,8 +732,10 @@ def ollama_chat():
     if do_stream:
         def generate():
             try:
-                response_text, used_model = _run_inference(messages, model_hint)
-                yield _ollama_chunk(response_text, used_model, done=False)
+                stream_gen, used_model = _run_inference_stream(messages, model_hint, gen_params)
+                for chunk in stream_gen:
+                    if chunk:
+                        yield _ollama_chunk(chunk, used_model, done=False)
                 yield _ollama_chunk("", used_model, done=True)
             except Exception as e:
                 app_logger.error(f"Error in /api/chat streaming: {e}")
@@ -679,7 +748,7 @@ def ollama_chat():
         )
     else:
         try:
-            response_text, used_model = _run_inference(messages, model_hint)
+            response_text, used_model = _run_inference(messages, model_hint, gen_params)
             return Response(
                 _ollama_chunk(response_text, used_model, done=True),
                 mimetype="application/json",
